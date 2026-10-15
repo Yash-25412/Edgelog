@@ -2,7 +2,7 @@
 
 import { useMemo } from "react";
 import {
-  bucketBy, byExitReason, byHour, byStopDiscipline, byWeekday, NO_STOP, STOP_SET, type Bucket,
+  bucketBy, byExitReason, byHour, byPlan, byPlanTiming, byWeekday, type Bucket,
 } from "@/lib/engine/analytics";
 import { EMOTIONS, type Journal } from "@/lib/journal";
 import type { Trade } from "@/lib/types";
@@ -53,7 +53,8 @@ function Bars({ title, note, rows, label }: { title: string; note?: string; rows
 }
 
 export function EdgeTab({ trades, journal }: { trades: Trade[]; journal: Map<string, Journal> | null }) {
-  const stop = useMemo(() => byStopDiscipline(trades), [trades]);
+  const plan = useMemo(() => byPlan(trades), [trades]);
+  const timing = useMemo(() => byPlanTiming(trades), [trades]);
   const exits = useMemo(() => byExitReason(trades), [trades]);
   const weekday = useMemo(() => byWeekday(trades), [trades]);
   const hour = useMemo(() => byHour(trades), [trades]);
@@ -67,8 +68,6 @@ export function EdgeTab({ trades, journal }: { trades: Trade[]; journal: Map<str
     [trades, journal], // eslint-disable-line react-hooks/exhaustive-deps
   );
 
-  const withStop = stop.find((b) => b.key === STOP_SET);
-  const noStop = stop.find((b) => b.key === NO_STOP);
   const journaled = journal ? trades.filter((t) => t.dbId && journal.has(t.dbId)).length : 0;
 
   return (
@@ -79,23 +78,36 @@ export function EdgeTab({ trades, journal }: { trades: Trade[]; journal: Map<str
       </div>
 
       <section className="card">
-        <h2>Stop-loss discipline</h2>
-        <p className="muted small bars-note">
-          Did the order carry a stop loss when you placed it? Trades without one can&apos;t have a real R-multiple.
-        </p>
+        <h2>Risk plan defined</h2>
+        <p className="muted small bars-note">A trade counts as defined if it had a stop loss or take profit at any point, including ones added after a limit order filled.</p>
         <div className="grid2 tight">
-          {[withStop, noStop].map((b) =>
-            b ? (
-              <div key={b.key} className="kpi">
-                <span>{b.key}</span>
-                <b className={cls(b.net)}>{money(b.net, true)}</b>
-                <small>
-                  {b.n} trades · {pct(b.winRate)} won · {b.avgR === null ? "no R available" : `avg ${num2(b.avgR)}R`}
-                  {b.confidence !== "ok" && ` · ${b.confidence} confidence`}
-                </small>
-              </div>
-            ) : null,
-          )}
+          {plan.map((b) => (
+            <div key={b.key} className="kpi">
+              <span>{b.key}</span>
+              <b className={cls(b.net)}>{money(b.net, true)}</b>
+              <small>
+                {b.n} trades · {pct(b.winRate)} won · {b.avgR === null ? "no R available" : `avg ${num2(b.avgR)}R`}
+                {b.confidence !== "ok" && ` · ${b.confidence} confidence`}
+              </small>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section className="card">
+        <h2>When the plan was added</h2>
+        <p className="muted small bars-note">Set with the order, added after the entry filled, or never. The first two both count as defined; this only shows whether the timing changes results.</p>
+        <div className="grid2 tight">
+          {timing.map((b) => (
+            <div key={b.key} className="kpi">
+              <span>{b.key}</span>
+              <b className={cls(b.net)}>{money(b.net, true)}</b>
+              <small>
+                {b.n} trades · {pct(b.winRate)} won · {b.avgR === null ? "no R available" : `avg ${num2(b.avgR)}R`}
+                {b.confidence !== "ok" && ` · ${b.confidence} confidence`}
+              </small>
+            </div>
+          ))}
         </div>
       </section>
 

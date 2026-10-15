@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { parseMt5Report } from "../src/lib/import/mt5.ts";
 import {
-  bucketBy, byExitReason, byHour, byStopDiscipline, byWeekday, confidence, dailyPnL, weekdayOf, NO_STOP, STOP_SET,
+  bucketBy, byExitReason, byHour, byPlan, byPlanTiming, byWeekday, confidence, dailyPnL, weekdayOf,
 } from "../src/lib/engine/analytics.ts";
 import type { Cell } from "../src/lib/types.ts";
 
@@ -15,7 +15,7 @@ const count = (xs: { n: number }[]) => xs.reduce((s, b) => s + b.n, 0);
 
 test("every single-key view adds up to the same trades and the same P&L", () => {
   assert.equal(total, 107.56);
-  for (const view of [byHour(trades), byWeekday(trades), byExitReason(trades), byStopDiscipline(trades)]) {
+  for (const view of [byHour(trades), byWeekday(trades), byExitReason(trades), byPlan(trades), byPlanTiming(trades)]) {
     assert.equal(count(view), 83);
     assert.equal(sum(view), total);
   }
@@ -45,13 +45,16 @@ test("hours are zero-padded broker hours in ascending order", () => {
   assert.deepEqual(hours, [...hours].sort());
 });
 
-test("stop discipline split matches the earlier finding: 45 with a stop, 38 without", () => {
-  const [withStop, noStop] = byStopDiscipline(trades);
-  assert.equal(withStop.key, STOP_SET);
-  assert.equal(noStop.key, NO_STOP);
-  assert.equal(withStop.n, 45);
-  assert.equal(noStop.n, 38);
-  assert.equal(noStop.avgR, null);
+test("every trade had a stop at some point; timing split is 45 at entry, 38 added after", () => {
+  const plan = byPlan(trades);
+  assert.equal(plan.find((b) => b.key === "Neither"), undefined);
+  assert.equal(plan.find((b) => b.key === "Target only"), undefined);
+  assert.equal(plan.find((b) => b.key === "Stop only")!.n, 4);
+  assert.equal(plan.find((b) => b.key === "Stop & target")!.n, 79);
+  const t = byPlanTiming(trades);
+  assert.equal(t.find((b) => b.key === "Set at entry")!.n, 45);
+  assert.equal(t.find((b) => b.key === "Added after entry")!.n, 38);
+  assert.equal(t.find((b) => b.key === "Never set"), undefined);
 });
 
 test("exit reasons reproduce the parser counts", () => {

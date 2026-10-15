@@ -87,14 +87,23 @@ export function byExitReason(trades: Trade[]): Bucket[] {
   return bucketBy(trades, (t) => [EXIT_LABEL[t.exitReason ?? "manual"]]).sort((a, b) => b.n - a.n);
 }
 
-export const STOP_SET = "Stop set at entry";
-export const NO_STOP = "No stop at entry";
+export const PLAN_ORDER = ["Stop & target", "Stop only", "Target only", "Neither"];
+export const TIMING_ORDER = ["Set at entry", "Added after entry", "Never set"];
+const order = (keys: string[]) => (a: { key: string }, b: { key: string }) => keys.indexOf(a.key) - keys.indexOf(b.key);
 
-/** Did the order carry a (valid) stop loss when it was placed? */
-export function byStopDiscipline(trades: Trade[]): Bucket[] {
-  return bucketBy(trades, (t) => [t.initialSl !== null ? STOP_SET : NO_STOP]).sort((a, b) => (a.key === STOP_SET ? -1 : 1) - (b.key === STOP_SET ? -1 : 1));
+/** A trade is "defined" if a stop or target existed at any point (it is common to add them after a limit order fills). */
+export function byPlan(trades: Trade[]): Bucket[] {
+  return bucketBy(trades, (t) => [
+    t.sl !== null && t.tp !== null ? "Stop & target" : t.sl !== null ? "Stop only" : t.tp !== null ? "Target only" : "Neither",
+  ]).sort(order(PLAN_ORDER));
 }
 
+/** When the stop/target was put on: with the order, after the entry filled, or never. Both of the first two count as defined. */
+export function byPlanTiming(trades: Trade[]): Bucket[] {
+  return bucketBy(trades, (t) => [
+    t.initialSl !== null || t.initialTp !== null ? "Set at entry" : t.sl !== null || t.tp !== null ? "Added after entry" : "Never set",
+  ]).sort(order(TIMING_ORDER));
+}
 /** Trades per direction of position size relative to the account's typical size. */
 export function bySide(trades: Trade[]): Bucket[] {
   return bucketBy(trades, (t) => [t.side === "buy" ? "Long" : "Short"]);
