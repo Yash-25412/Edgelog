@@ -145,3 +145,9 @@ textarea:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
 .chart-head h2 { margin: 0; }
 .tchart { border-radius: 10px; overflow: hidden; border: 1px solid var(--line); }
 .chart-hover { padding: 8px 12px; min-height: 36px; font-variant-numeric: tabular-nums; background: var(--panel); }
+
+.tchart { position: relative; }
+.chart-expand { position: absolute; top: 8px; right: 8px; z-index: 2; font-size: 13px; padding: 5px 10px; opacity: .9; }
+.tchart-full { position: fixed; inset: 0; z-index: 1000; border-radius: 0; border: 0; background: #0e1116; display: flex; flex-direction: column; justify-content: center; }
+.tchart-full svg { width: 100% !important; height: auto !important; max-height: calc(100vh - 56px); }
+.tchart-full .chart-expand { top: 12px; right: 16px; }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type Ref } from "react";
+import { useEffect, useState, type Ref } from "react";
 import type { ChartWindow } from "@/lib/engine/chartwindow";
 import type { Trade } from "@/lib/types";
 
@@ -10,7 +10,7 @@ import type { Trade } from "@/lib/types";
  * as they stood when the trade closed.
  */
 
-const W = 1000, H = 540, L = 58, R = 175, T = 66, B = 52;
+const W = 1000, H = 540, L = 62, R = 205, T = 66, B = 52;
 const BG = "#0e1116", GRID = "#262d38", TXT = "#e6e9ee", MUT = "#8b95a5";
 const UP = "#2dd4a8", DOWN = "#ff6b6b", WARN = "#f5b942", BLUE = "#6ea8ff";
 const FONT = "system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif";
@@ -40,6 +40,18 @@ function decimalsFor(prices: number[]): number {
 
 export function TradeChart({ trade, chart, svgRef }: { trade: Trade; chart: ChartWindow; svgRef?: Ref<SVGSVGElement> }) {
   const [hover, setHover] = useState<number | null>(null);
+  const [full, setFull] = useState(false);
+  useEffect(() => {
+    if (!full) return;
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setFull(false);
+    window.addEventListener("keydown", onKey);
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      document.body.style.overflow = prev;
+    };
+  }, [full]);
   const { candles: C, tfMinutes: tf } = chart;
   const N = C.length;
   const dp = decimalsFor([trade.openPrice, trade.closePrice]);
@@ -104,7 +116,10 @@ export function TradeChart({ trade, chart, svgRef }: { trade: Trade; chart: Char
   const hc = hover === null ? null : C[hover];
 
   return (
-    <div className="tchart">
+    <div className={full ? "tchart tchart-full" : "tchart"}>
+      <button type="button" className="chart-expand" onClick={() => setFull((v) => !v)} aria-label={full ? "Close full screen" : "Expand chart to full screen"}>
+        {full ? "✕ Close (Esc)" : "⛶ Expand"}
+      </button>
       <svg
         ref={svgRef}
         xmlns="http://www.w3.org/2000/svg"
@@ -119,10 +134,10 @@ export function TradeChart({ trade, chart, svgRef }: { trade: Trade; chart: Char
         aria-label={`${trade.symbol} ${tfLabel} chart of the trade`}
       >
         <rect width={W} height={H} fill={BG} />
-        <text x={L} y={26} fill={TXT} fontSize={17} fontWeight={700}>
+        <text x={L} y={26} fill={TXT} fontSize={20} fontWeight={700}>
           {trade.symbol} · {tfLabel} · {isBuy ? "Long" : "Short"} {trade.volume} lots · {day}
         </text>
-        <text x={L} y={46} fill={MUT} fontSize={12}>
+        <text x={L} y={46} fill={MUT} fontSize={14}>
           {N} candles, {C[0].time.slice(11, 16)} to {C[N - 1].time.slice(11, 16)} broker time · {before} before entry, {after} after exit ·{" "}
           {net >= 0 ? "+" : ""}
           {net.toFixed(2)}
@@ -132,13 +147,13 @@ export function TradeChart({ trade, chart, svgRef }: { trade: Trade; chart: Char
         {ticks.map((v) => (
           <g key={v}>
             <line x1={L} x2={W - R} y1={y(v)} y2={y(v)} stroke={GRID} strokeWidth={1} />
-            <text x={L - 8} y={y(v) + 4} fill={MUT} fontSize={11} textAnchor="end">{v.toFixed(tickStep < 1 ? 2 : 0)}</text>
+            <text x={L - 8} y={y(v) + 4} fill={MUT} fontSize={13} textAnchor="end">{v.toFixed(tickStep < 1 ? 2 : 0)}</text>
           </g>
         ))}
         {xTicks.map((i) => (
           <g key={i}>
             <line x1={x(i)} x2={x(i)} y1={T} y2={H - B} stroke={GRID} strokeWidth={1} opacity={0.5} />
-            <text x={x(i)} y={H - B + 17} fill={MUT} fontSize={11} textAnchor="middle">{C[i].time.slice(11, 16)}</text>
+            <text x={x(i)} y={H - B + 17} fill={MUT} fontSize={13} textAnchor="middle">{C[i].time.slice(11, 16)}</text>
           </g>
         ))}
 
@@ -172,25 +187,25 @@ export function TradeChart({ trade, chart, svgRef }: { trade: Trade; chart: Char
         />
         <rect x={xOut - 6} y={y(trade.closePrice) - 6} width={12} height={12} fill={net >= 0 ? UP : DOWN} stroke={BG} strokeWidth={1.5} />
 
-        <text x={xIn - 12} y={y(trade.openPrice) + (entryAbove ? -22 : 34)} fill={TXT} fontSize={12} textAnchor="end" {...halo}>
+        <text x={xIn - 12} y={y(trade.openPrice) + (entryAbove ? -22 : 34)} fill={TXT} fontSize={14} textAnchor="end" {...halo}>
           {isBuy ? "BUY" : "SELL"} {trade.volume} @ {fmt(trade.openPrice)}
         </text>
-        <text x={xIn - 12} y={y(trade.openPrice) + (entryAbove ? -8 : 48)} fill={MUT} fontSize={11} textAnchor="end" {...halo}>
+        <text x={xIn - 12} y={y(trade.openPrice) + (entryAbove ? -8 : 48)} fill={MUT} fontSize={13} textAnchor="end" {...halo}>
           {trade.openTime.slice(11)}
         </text>
-        <text x={xOut - 14} y={y(trade.closePrice) + (entryAbove ? 30 : -30)} fill={TXT} fontSize={12} textAnchor="end" {...halo}>
+        <text x={xOut - 14} y={y(trade.closePrice) + (entryAbove ? 30 : -30)} fill={TXT} fontSize={14} textAnchor="end" {...halo}>
           CLOSE @ {fmt(trade.closePrice)}{trade.exitReason === "manual" ? " (manual)" : trade.exitReason === "sl" ? " (stop)" : trade.exitReason === "tp" ? " (target)" : ""}
         </text>
-        <text x={xOut - 14} y={y(trade.closePrice) + (entryAbove ? 44 : -16)} fill={MUT} fontSize={11} textAnchor="end" {...halo}>
+        <text x={xOut - 14} y={y(trade.closePrice) + (entryAbove ? 44 : -16)} fill={MUT} fontSize={13} textAnchor="end" {...halo}>
           {trade.closeTime.slice(11)} · {net >= 0 ? "+" : ""}{net.toFixed(2)}
         </text>
 
         {rightItems.map((r, i) => (
-          <text key={i} x={W - R + 8} y={labelYs[i] + 4} fill={r.color} fontSize={12}>{r.text}</text>
+          <text key={i} x={W - R + 8} y={labelYs[i] + 4} fill={r.color} fontSize={14}>{r.text}</text>
         ))}
 
         {hover !== null && <line x1={x(hover)} x2={x(hover)} y1={T} y2={H - B} stroke={MUT} strokeWidth={1} strokeDasharray="3 3" />}
-        <text x={L} y={H - 9} fill={MUT} fontSize={10.5}>
+        <text x={L} y={H - 9} fill={MUT} fontSize={12.5}>
           Candles: your MT5 price history. Entry, exit and stops: your trade report. Times are broker server time.
         </text>
       </svg>

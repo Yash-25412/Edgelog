@@ -7,7 +7,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "test": "node --experimental-strip-types --test tests/mt5.test.ts tests/analytics.test.ts tests/chartwindow.test.ts tests/charts.test.ts"
+    "test": "node --experimental-strip-types --test tests/mt5.test.ts tests/analytics.test.ts tests/chartwindow.test.ts tests/charts.test.ts tests/manual.test.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.47.0",

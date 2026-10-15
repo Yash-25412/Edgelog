@@ -10,7 +10,8 @@ import { rowToJournal, type Journal } from "@/lib/journal";
 import { looksLikeM1, parseMt5Bars, symbolFromFilename } from "@/lib/import/bars";
 import { alignment, chartWindow } from "@/lib/engine/chartwindow";
 import { chartToRow } from "@/lib/charts";
-import { rowToTrade } from "@/lib/db";
+import { rowToTrade, tradeToRow } from "@/lib/db";
+import { buildManualTrade } from "@/lib/manual";
 import { summarize, drawdown, equityCurve, type CurvePoint } from "@/lib/engine/stats";
 import type { Trade } from "@/lib/types";
 import { duration, money, num2, pct, shortStamp } from "@/lib/format";
@@ -103,6 +104,12 @@ export default function Dashboard() {
   const [candleResult, setCandleResult] = useState<{ symbol: string; saved: number; notCovered: number; mismatch: number; skippedRows: number } | null>(null);
   const [chartIds, setChartIds] = useState<Set<string> | null>(null);
   const [chartTick, setChartTick] = useState(0);
+
+  const [showManual, setShowManual] = useState(false);
+  const [manualBusy, setManualBusy] = useState(false);
+  const [manualMsg, setManualMsg] = useState<string | null>(null);
+  const [mf, setMf] = useState<Record<string, string>>({ account: "new", accName: "", side: "buy", reason: "manual" });
+  const setF = (k: string) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => setMf((o) => ({ ...o, [k]: e.target.value }));
 
   const [showImport, setShowImport] = useState(false);
   const [target, setTarget] = useState<string>("new");
@@ -245,6 +252,60 @@ export default function Dashboard() {
     router.replace("/login");
   }
 
+  async function doManual(e: React.FormEvent) {
+    e.preventDefault();
+    setManualBusy(true);
+    setError(null);
+    setManualMsg(null);
+    try {
+      const numOrNull = (v?: string) => (v && v.trim() !== "" ? Number(v) : null);
+      const sb = getSupabase();
+      const { data: s } = await sb.auth.getSession();
+      if (!s.session) throw new Error("Your session has expired. Sign in again.");
+      const uid = s.session.user.id;
+      const trade = buildManualTrade(
+        {
+          symbol: mf.symbol ?? "",
+          side: mf.side === "sell" ? "sell" : "buy",
+          volume: Number(mf.volume),
+          openTime: mf.openTime ?? "",
+          openPrice: Number(mf.openPrice),
+          closeTime: mf.closeTime ?? "",
+          closePrice: Number(mf.closePrice),
+          profit: Number(mf.profit),
+          commission: numOrNull(mf.commission) ?? 0,
+          swap: numOrNull(mf.swap) ?? 0,
+          sl: numOrNull(mf.sl),
+          tp: numOrNull(mf.tp),
+          exitReason: (mf.reason as any) || null,
+        },
+        `manual-${crypto.randomUUID()}`
+      );
+      let accountId = mf.account;
+      if (accountId === "new") {
+        const { data, error } = await sb
+          .from("accounts")
+          .insert({ user_id: uid, name: mf.accName?.trim() || "Manual trades", platform: "manual" })
+          .select("id")
+          .single();
+        if (error) throw new Error(error.message);
+        accountId = data.id;
+      }
+      const { error } = await sb.from("trades").insert(tradeToRow(trade, uid, accountId));
+      if (error) throw new Error(error.message);
+      await loadAccounts();
+      setSelected(accountId);
+      remember("edgelog.account", accountId);
+      setMf((o) => ({ ...o, account: accountId, symbol: "", volume: "", openPrice: "", closePrice: "", profit: "", commission: "", swap: "", sl: "", tp: "" }));
+      setManualMsg(`Saved ${trade.symbol} ${trade.side} (${trade.net >= 0 ? "+" : ""}${trade.net.toFixed(2)}). Open it from the Trades tab to journal it.`);
+      setTab("trades");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not save the trade.");
+    } finally {
+      setManualBusy(false);
+    }
+  }
+
   async function doImport(e: React.FormEvent) {
     e.preventDefault();
     const file = fileRef.current?.files?.[0];
@@ -344,6 +405,7 @@ export default function Dashboard() {
               <option key={a.id} value={a.id}>{a.name}</option>
             ))}
           </select>
+          <button className="primary" onClick={() => setShowManual((v) => !v)}>{showManual ? "Close" : "+ Log a trade"}</button>
           <button onClick={() => setShowImport((v) => !v)}>{showImport ? "Close import" : "Import trades"}</button>
           <span className="muted small hide-sm">{email}</span>
           <button className="link" onClick={signOut}>Sign out</button>
@@ -351,6 +413,45 @@ export default function Dashboard() {
       </header>
 
       {error && <div className="notice bad">{error}</div>}
+
+      {showManual && (
+        <form className="card import" onSubmit={doManual}>
+          <h2>Log a trade by hand</h2>
+          <p className="muted small">For trades that are not in an MT5 report. Use the same clock as your platform for the times. Profit is the gross result in money (negative for a loss), before commission and swap.</p>
+          <div className="row">
+            <label>Account
+              <select value={mf.account} onChange={setF("account")}>
+                <option value="new">A new manual account</option>
+                {accounts.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+              </select>
+            </label>
+            {mf.account === "new" && <label>Account name (optional)<input value={mf.accName ?? ""} onChange={setF("accName")} placeholder="e.g. Personal manual" /></label>}
+            <label>Symbol<input required value={mf.symbol ?? ""} onChange={setF("symbol")} placeholder="XAUUSD" /></label>
+            <label>Side
+              <select value={mf.side} onChange={setF("side")}><option value="buy">Buy / Long</option><option value="sell">Sell / Short</option></select>
+            </label>
+            <label>Volume (lots)<input required type="number" step="any" min="0" value={mf.volume ?? ""} onChange={setF("volume")} /></label>
+          </div>
+          <div className="row">
+            <label>Entry time<input required type="datetime-local" value={mf.openTime ?? ""} onChange={setF("openTime")} /></label>
+            <label>Entry price<input required type="number" step="any" value={mf.openPrice ?? ""} onChange={setF("openPrice")} /></label>
+            <label>Exit time<input required type="datetime-local" value={mf.closeTime ?? ""} onChange={setF("closeTime")} /></label>
+            <label>Exit price<input required type="number" step="any" value={mf.closePrice ?? ""} onChange={setF("closePrice")} /></label>
+          </div>
+          <div className="row">
+            <label>Profit / loss (money)<input required type="number" step="any" value={mf.profit ?? ""} onChange={setF("profit")} /></label>
+            <label>Commission (optional, negative)<input type="number" step="any" value={mf.commission ?? ""} onChange={setF("commission")} /></label>
+            <label>Swap (optional)<input type="number" step="any" value={mf.swap ?? ""} onChange={setF("swap")} /></label>
+            <label>Stop at entry (optional, gives R)<input type="number" step="any" value={mf.sl ?? ""} onChange={setF("sl")} /></label>
+            <label>Target (optional)<input type="number" step="any" value={mf.tp ?? ""} onChange={setF("tp")} /></label>
+            <label>How it ended
+              <select value={mf.reason} onChange={setF("reason")}><option value="manual">Closed by me</option><option value="sl">Stop hit</option><option value="tp">Target hit</option></select>
+            </label>
+          </div>
+          <button className="primary" disabled={manualBusy}>{manualBusy ? "Saving…" : "Save trade"}</button>
+          {manualMsg && <div className="notice">{manualMsg}</div>}
+        </form>
+      )}
 
       {showImport && (
         <>
