@@ -58,6 +58,17 @@ export function aggregate(m1: Bar[], tf: number): Bar[] {
   return out;
 }
 
+/** First index whose time is >= t. Bars must be sorted oldest first. */
+function lowerBound(bars: Bar[], t: Stamp): number {
+  let lo = 0, hi = bars.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (bars[mid].time < t) lo = mid + 1;
+    else hi = mid;
+  }
+  return lo;
+}
+
 export interface ChartWindow {
   tfMinutes: number;
   candles: Bar[];
@@ -70,8 +81,17 @@ export interface ChartWindow {
 
 /** Null when the candle data does not cover the trade at all. */
 export function chartWindow(trade: Pick<Trade, "openTime" | "closeTime">, m1: Bar[]): ChartWindow | null {
+  // The price data must span the whole trade, otherwise the exit would be drawn on the wrong candle.
+  if (!m1.length || m1[0].time > trade.openTime.slice(0, 16) + ":00" || m1[m1.length - 1].time < trade.closeTime.slice(0, 16) + ":00") return null;
   const tf = chooseTimeframe(trade.openTime, trade.closeTime);
-  const candles = aggregate(m1, tf);
+  // Only the neighbourhood of the trade is rolled up, so a year of bars does not slow down every trade.
+  // The start is aligned to a candle boundary so the first candle is never a partial one, and the
+  // look-back is generous enough to cross a weekend gap.
+  const span = tf * MIN;
+  const lookback = Math.max(Math.ceil((WINDOW_BARS + 1) * span * 1.5), 5 * 24 * 60 * MIN);
+  const startMs = Math.floor((ms(trade.openTime) - lookback) / span) * span;
+  const endMs = ms(trade.closeTime) + (BARS_AFTER + 2) * span;
+  const candles = aggregate(m1.slice(lowerBound(m1, stamp(startMs)), lowerBound(m1, stamp(endMs))), tf);
   if (!candles.length) return null;
   const entryStart = bucketStart(trade.openTime, tf);
   const exitStart = bucketStart(trade.closeTime, tf);
@@ -108,7 +128,8 @@ export interface Alignment {
 export function alignment(trade: Pick<Trade, "openTime" | "closeTime" | "openPrice" | "closePrice">, m1: Bar[]): Alignment {
   const fits = (time: Stamp, price: number) => {
     const t = ms(time);
-    return m1.some((b) => Math.abs(ms(b.time) - Math.floor(t / MIN) * MIN) <= MIN && b.low <= price && price <= b.high);
+    const near = m1.slice(lowerBound(m1, stamp(t - 2 * MIN)), lowerBound(m1, stamp(t + 2 * MIN)));
+    return near.some((b) => Math.abs(ms(b.time) - Math.floor(t / MIN) * MIN) <= MIN && b.low <= price && price <= b.high);
   };
   return { entryFits: fits(trade.openTime, trade.openPrice), exitFits: fits(trade.closeTime, trade.closePrice) };
 }

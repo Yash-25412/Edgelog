@@ -139,3 +139,9 @@ textarea:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
 .shots figure { margin: 0; display: grid; gap: 4px; }
 .shots img { width: 100%; height: 130px; object-fit: cover; border-radius: 8px; border: 1px solid var(--line); display: block; }
 .shot-wait { height: 130px; display: grid; place-items: center; border: 1px solid var(--line); border-radius: 8px; }
+
+/* ---- trade chart ---- */
+.chart-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; }
+.chart-head h2 { margin: 0; }
+.tchart { border-radius: 10px; overflow: hidden; border: 1px solid var(--line); }
+.chart-hover { padding: 8px 12px; min-height: 36px; font-variant-numeric: tabular-nums; background: var(--panel); }

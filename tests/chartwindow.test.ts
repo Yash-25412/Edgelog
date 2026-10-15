@@ -93,6 +93,13 @@ test("no data for the trade means no chart, not a wrong chart", () => {
   assert.equal(chartWindow(trade, []), null);
 });
 
+test("price data that stops before the exit (or starts after the entry) gives no chart", () => {
+  const endsEarly = m1.filter((b) => b.time < "2026-09-25T16:00:00");
+  assert.equal(chartWindow(trade, endsEarly), null);
+  const startsLate = m1.filter((b) => b.time >= "2026-09-25T14:30:00");
+  assert.equal(chartWindow(trade, startsLate), null);
+});
+
 test("entry and exit prices sit inside the real candles, and a shifted clock is caught", () => {
   assert.deepEqual(alignment(trade, m1), { entryFits: true, exitFits: true });
   const shifted = { ...trade, openTime: "2026-09-25T17:10:13", closeTime: "2026-09-25T19:18:32" }; // clock off by 3h

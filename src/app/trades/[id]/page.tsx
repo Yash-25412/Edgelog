@@ -5,6 +5,9 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { getSupabase } from "@/lib/supabase";
 import { rowToTrade } from "@/lib/db";
+import { rowToChart } from "@/lib/charts";
+import { TradeChart } from "@/components/TradeChart";
+import type { ChartWindow } from "@/lib/engine/chartwindow";
 import { BUCKET, EMOTIONS, MISTAKES, rowToJournal } from "@/lib/journal";
 import type { Trade } from "@/lib/types";
 import { duration, money, num2, shortStamp } from "@/lib/format";
@@ -42,6 +45,9 @@ export default function TradePage() {
   const [uploading, setUploading] = useState(false);
   const [message, setMessage] = useState<{ kind: "ok" | "bad"; text: string } | null>(null);
   const dirty = useRef(false);
+  const svgRef = useRef<SVGSVGElement>(null);
+  const [chart, setChart] = useState<ChartWindow | null>(null);
+  const [savingChart, setSavingChart] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -59,6 +65,9 @@ export default function TradePage() {
         return;
       }
       setTrade(rowToTrade(row));
+
+      const { data: ch } = await sb.from("trade_charts").select("*").eq("trade_id", id).maybeSingle();
+      if (ch) setChart(rowToChart(ch)); // no chart yet, or the table is not created: the page works without it
 
       const { data: j, error: jErr } = await sb.from("trade_journal").select("*").eq("trade_id", id).maybeSingle();
       if (jErr) {
@@ -186,6 +195,47 @@ export default function TradePage() {
     await save({ screenshots: next });
   }
 
+  async function saveChartToJournal() {
+    const svg = svgRef.current;
+    if (!svg || !userId) return;
+    setSavingChart(true);
+    setMessage(null);
+    try {
+      const clone = svg.cloneNode(true) as SVGSVGElement;
+      clone.removeAttribute("style");
+      clone.setAttribute("width", "1000");
+      clone.setAttribute("height", "540");
+      const xml = new XMLSerializer().serializeToString(clone);
+      const url = URL.createObjectURL(new Blob([xml], { type: "image/svg+xml;charset=utf-8" }));
+      const img = new Image();
+      await new Promise<void>((resolve, reject) => {
+        img.onload = () => resolve();
+        img.onerror = () => reject(new Error("Could not turn the chart into an image."));
+        img.src = url;
+      });
+      const canvas = document.createElement("canvas");
+      canvas.width = 2000;
+      canvas.height = 1080;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) throw new Error("Could not turn the chart into an image.");
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      URL.revokeObjectURL(url);
+      const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/png"));
+      if (!blob) throw new Error("Could not turn the chart into an image.");
+      const path = `${userId}/${id}/chart.png`;
+      const { error } = await getSupabase().storage.from(BUCKET).upload(path, blob, { contentType: "image/png", upsert: true });
+      if (error) throw new Error(error.message);
+      const next = form.screenshots.includes(path) ? form.screenshots : [path, ...form.screenshots];
+      setForm((f) => ({ ...f, screenshots: next }));
+      await save({ screenshots: next });
+      setMessage({ kind: "ok", text: "Chart saved to this trade's screenshots." });
+    } catch (e) {
+      setMessage({ kind: "bad", text: e instanceof Error ? e.message : "Could not save the chart." });
+    } finally {
+      setSavingChart(false);
+    }
+  }
+
   if (loading) return <main className="center muted">Loading…</main>;
   if (!trade) {
     return (
@@ -228,6 +278,25 @@ export default function TradePage() {
           <p className="muted small">
             Closed in {trade.exits.length} parts:{" "}
             {trade.exits.map((e) => `${e.volume} lots @ ${e.price} (${shortStamp(e.time)})`).join(" · ")}
+          </p>
+        )}
+      </section>
+
+      <section className="card">
+        <div className="chart-head">
+          <h2>Chart</h2>
+          {chart && !journalMissing && (
+            <button type="button" onClick={saveChartToJournal} disabled={savingChart}>
+              {savingChart ? "Saving…" : "Save chart to journal screenshots"}
+            </button>
+          )}
+        </div>
+        {chart ? (
+          <TradeChart trade={trade} chart={chart} svgRef={svgRef} />
+        ) : (
+          <p className="muted small">
+            No candles for this trade yet. On the dashboard, open <b>Import trades</b> and add your MT5 one-minute bars file, or paste your own
+            screenshot in the journal below.
           </p>
         )}
       </section>

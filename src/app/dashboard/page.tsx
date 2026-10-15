@@ -7,6 +7,9 @@ import { getSupabase } from "@/lib/supabase";
 import { Calendar } from "@/components/Calendar";
 import { EdgeTab } from "@/components/EdgeTab";
 import { rowToJournal, type Journal } from "@/lib/journal";
+import { looksLikeM1, parseMt5Bars, symbolFromFilename } from "@/lib/import/bars";
+import { alignment, chartWindow } from "@/lib/engine/chartwindow";
+import { chartToRow } from "@/lib/charts";
 import { rowToTrade } from "@/lib/db";
 import { summarize, drawdown, equityCurve, type CurvePoint } from "@/lib/engine/stats";
 import type { Trade } from "@/lib/types";
@@ -94,6 +97,12 @@ export default function Dashboard() {
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState<Tab>("overview");
   const [journal, setJournal] = useState<Map<string, Journal> | null>(null);
+  const candleRef = useRef<HTMLInputElement>(null);
+  const [candleSymbol, setCandleSymbol] = useState("");
+  const [candleBusy, setCandleBusy] = useState(false);
+  const [candleResult, setCandleResult] = useState<{ symbol: string; saved: number; notCovered: number; mismatch: number; skippedRows: number } | null>(null);
+  const [chartIds, setChartIds] = useState<Set<string> | null>(null);
+  const [chartTick, setChartTick] = useState(0);
 
   const [showImport, setShowImport] = useState(false);
   const [target, setTarget] = useState<string>("new");
@@ -199,6 +208,28 @@ export default function Dashboard() {
     };
   }, [ready, trades]);
 
+  useEffect(() => {
+    if (!ready) return;
+    let cancelled = false;
+    (async () => {
+      const sb = getSupabase();
+      const ids = new Set<string>();
+      for (let from = 0; ; from += 1000) {
+        const { data, error } = await sb.from("trade_charts").select("trade_id").range(from, from + 999);
+        if (error) {
+          if (!cancelled) setChartIds(null); // table not created yet
+          return;
+        }
+        (data ?? []).forEach((r: any) => ids.add(r.trade_id));
+        if (!data || data.length < 1000) break;
+      }
+      if (!cancelled) setChartIds(ids);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [ready, chartTick]);
+
   const start = useMemo(() => {
     const pick = selected === "all" ? accounts : accounts.filter((a) => a.id === selected);
     return pick.reduce((s, a) => s + (a.starting_balance ?? 0), 0);
@@ -252,6 +283,54 @@ export default function Dashboard() {
     }
   }
 
+  async function doCandles(e: React.FormEvent) {
+    e.preventDefault();
+    const file = candleRef.current?.files?.[0];
+    const symbol = candleSymbol.trim();
+    if (!file) return setError("Choose the bars file first.");
+    if (!symbol) return setError("Type the symbol exactly as it appears in your trades, for example XAUUSD.");
+    setCandleBusy(true);
+    setError(null);
+    setCandleResult(null);
+    try {
+      const meta = symbolFromFilename(file.name);
+      if (meta && meta.timeframe !== "M1") throw new Error(`This file has ${meta.timeframe} bars. Export 1 Minute (M1) bars instead.`);
+      const { bars, skipped } = parseMt5Bars(await file.text());
+      if (!bars.length) throw new Error("No candles could be read from that file.");
+      if (!looksLikeM1(bars)) throw new Error("These do not look like 1-minute bars. In MT5, set the timeframe to 1 Minute before exporting.");
+      const sb = getSupabase();
+      const { data: s } = await sb.auth.getSession();
+      if (!s.session) throw new Error("Your session has expired. Sign in again.");
+      const userId = s.session.user.id;
+
+      const mine = trades.filter((t) => t.dbId && t.symbol.toLowerCase() === symbol.toLowerCase());
+      if (!mine.length) throw new Error(`No imported trades for ${symbol} in this view. Import your trade report first, and check the symbol spelling.`);
+
+      let notCovered = 0, mismatch = 0;
+      const rows: ReturnType<typeof chartToRow>[] = [];
+      for (const t of mine) {
+        const w = chartWindow(t, bars);
+        if (!w) { notCovered++; continue; }
+        const a = alignment(t, bars);
+        if (!a.entryFits || !a.exitFits) { mismatch++; continue; }
+        rows.push(chartToRow(w, t.dbId!, userId));
+      }
+      for (let i = 0; i < rows.length; i += 20) {
+        const { error } = await sb.from("trade_charts").upsert(rows.slice(i, i + 20), { onConflict: "trade_id" });
+        if (error) {
+          throw new Error(/trade_charts/.test(error.message) ? "The charts table does not exist yet. Run 0003_charts.sql in Supabase first." : error.message);
+        }
+      }
+      setCandleResult({ symbol, saved: rows.length, notCovered, mismatch, skippedRows: skipped });
+      setChartTick((n) => n + 1);
+      if (candleRef.current) candleRef.current.value = "";
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not build the charts.");
+    } finally {
+      setCandleBusy(false);
+    }
+  }
+
   if (!ready && !error) return <main className="center muted">Loading…</main>;
 
   return (
@@ -274,6 +353,7 @@ export default function Dashboard() {
       {error && <div className="notice bad">{error}</div>}
 
       {showImport && (
+        <>
         <form className="card import" onSubmit={doImport}>
           <h2>Import an MT5 report</h2>
           <p className="muted small">
@@ -311,6 +391,44 @@ export default function Dashboard() {
             </div>
           )}
         </form>
+
+        <form className="card import" onSubmit={doCandles}>
+          <h2>Add price candles (optional)</h2>
+          <p className="muted small">
+            Gives each trade a chart. In MetaTrader 5 press <b>Ctrl+U</b>, open the <b>Bars</b> tab, pick the symbol and <b>1 Minute</b>, set the
+            dates, click <b>Request</b>, then <b>Export Bars</b>. Import your trade report first. The file stays in your browser; only the
+            roughly 100 candles around each trade are saved.
+          </p>
+          <div className="row">
+            <label>
+              Bars file (.csv)
+              <input
+                ref={candleRef}
+                type="file"
+                accept=".csv,.txt"
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  const m = f ? symbolFromFilename(f.name) : null;
+                  if (m) setCandleSymbol(m.symbol);
+                }}
+              />
+            </label>
+            <label>
+              Symbol in your trades
+              <input value={candleSymbol} onChange={(e) => setCandleSymbol(e.target.value)} placeholder="e.g. XAUUSD" />
+            </label>
+          </div>
+          <button className="primary" disabled={candleBusy}>{candleBusy ? "Building charts…" : "Build charts"}</button>
+          {candleResult && (
+            <div className="notice">
+              {candleResult.symbol}: {candleResult.saved} charts saved.
+              {candleResult.notCovered > 0 && ` ${candleResult.notCovered} trades fall outside the dates in your file.`}
+              {candleResult.mismatch > 0 && ` ${candleResult.mismatch} trades were skipped because their prices do not fit these candles (a different price feed or clock).`}
+              {candleResult.skippedRows > 0 && ` ${candleResult.skippedRows} unreadable rows in the file were ignored.`}
+            </div>
+          )}
+        </form>
+        </>
       )}
 
       {!loading && trades.length === 0 && !showImport && (
@@ -390,7 +508,7 @@ export default function Dashboard() {
                     <tr>
                       <th>Closed</th><th>Symbol</th><th>Side</th><th className="r">Lots</th>
                       <th className="r">Entry</th><th className="r">Exit</th><th>Exit by</th>
-                      <th className="r">R</th><th className="r">Net</th><th>Journal</th>
+                      <th className="r">R</th><th className="r">Net</th><th>Chart</th><th>Journal</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -408,6 +526,7 @@ export default function Dashboard() {
                           <td>{t.exitReason === "sl" ? "Stop" : t.exitReason === "tp" ? "Target" : t.exitReason === "stop_out" ? "Stop-out" : "Manual"}</td>
                           <td className={"r " + cls(t.rMultiple)}>{t.rMultiple === null ? "–" : t.rMultiple.toFixed(2)}</td>
                           <td className={"r " + cls(t.net)}>{money(t.net, true)}</td>
+                          <td className="muted">{t.dbId && chartIds?.has(t.dbId) ? "✓" : "–"}</td>
                           <td>{t.dbId && <Link href={`/trades/${t.dbId}`}>{hasEntry ? "Edit ✓" : "Add"}</Link>}</td>
                         </tr>
                       );

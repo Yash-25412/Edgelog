@@ -54,3 +54,25 @@ export function parseMt5Bars(text: string): { bars: Bar[]; skipped: number } {
   bars.sort((a, b) => (a.time < b.time ? -1 : a.time > b.time ? 1 : 0));
   return { bars, skipped };
 }
+
+/**
+ * Reads symbol and timeframe from an MT5 export file name such as
+ * "XAUUSD_M1_202609150100_202610151113.csv". Returns null when the name does not follow that pattern.
+ */
+export function symbolFromFilename(name: string): { symbol: string; timeframe: string } | null {
+  const m = /(?:^|[^A-Za-z0-9.#])([A-Za-z0-9.#]+)_([MHDW]\d+)_\d{6,}/.exec(name);
+  return m ? { symbol: m[1], timeframe: m[2].toUpperCase() } : null;
+}
+
+/** True when nearly all consecutive bars within a session are exactly one minute apart. */
+export function looksLikeM1(bars: Bar[]): boolean {
+  let same = 0, total = 0;
+  for (let i = 1; i < bars.length && total < 2000; i++) {
+    const gap = (Date.parse(bars[i].time + "Z") - Date.parse(bars[i - 1].time + "Z")) / 60000;
+    if (gap <= 30) { // ignore closes and weekends
+      total++;
+      if (gap === 1) same++;
+    }
+  }
+  return total >= 5 && same / total >= 0.8;
+}
