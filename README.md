@@ -6,9 +6,9 @@ Trading journal and analytics for day, swing and prop-firm traders. Multi-user.
 
 | Stage | What | State |
 |---|---|---|
-| 0 | Repo, Supabase, Vercel, login | Not started (npm was unreachable when Stage 1 code was written) |
-| 1 | MT5 import + trade engine + database schema | Parser, stats and schema done and tested. Upload screen not built |
-| 2 | Dashboard (KPIs, equity curve, calendar, multi-account) | Not started |
+| 0 | Repo, Supabase, Vercel, login | App written (login, upload, dashboard). Not yet built or deployed |
+| 1 | MT5 import + trade engine + database schema | Parser, stats and schema tested. Upload screen written, untested in a browser |
+| 2 | Dashboard (KPIs, equity curve, calendar, multi-account) | First version written (no calendar yet) |
 | 3 | Journal + analytics | Not started |
 | 4 | Broker auto-sync | Not started |
 | 5 | AI coach | Not started |
@@ -39,3 +39,15 @@ and check the result against the figures MetaTrader prints in that same file.
 - Import is idempotent: unique (account, platform position id).
 - Anything odd found while parsing becomes a warning shown to the user. Nothing is silently dropped.
 - R-multiples use the stop set when the order was placed. Trades without one have no R; it is never guessed.
+
+## Deploying
+
+1. Run `supabase/migrations/0001_core.sql` once in the Supabase SQL Editor.
+2. In Vercel set `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` (see `.env.example`).
+3. Deploy. Only the public anon key is used; Row Level Security keeps each user's data private.
+
+## Known gaps
+
+- `next.config.mjs` has `ignoreBuildErrors: true` because the first version was written without being able to run a build. Turn it off once `npx tsc --noEmit` is clean.
+- `src/lib/import/xlsx.ts` and the app screens have not been exercised against a real browser session yet.
+- Dashboard drawdown uses closed trades, so it can differ slightly from MetaTrader's (which includes entry commission).
