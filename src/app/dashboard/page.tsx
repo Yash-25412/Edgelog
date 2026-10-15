@@ -11,6 +11,7 @@ import { looksLikeM1, parseMt5Bars, symbolFromFilename } from "@/lib/import/bars
 import { alignment, chartWindow } from "@/lib/engine/chartwindow";
 import { chartToRow } from "@/lib/charts";
 import { rowToTrade, tradeToRow } from "@/lib/db";
+import { withFinalStopR } from "@/lib/engine/rfallback";
 import { buildManualTrade } from "@/lib/manual";
 import { summarize, drawdown, equityCurve, type CurvePoint } from "@/lib/engine/stats";
 import type { Trade } from "@/lib/types";
@@ -184,7 +185,7 @@ export default function Dashboard() {
         if (!data || data.length < 1000) break;
       }
       if (!cancelled) {
-        setTrades(all.map(rowToTrade));
+        setTrades(withFinalStopR(all.map(rowToTrade)));
         setLoading(false);
       }
     })();
@@ -559,7 +560,7 @@ export default function Dashboard() {
                 <div className="kpi"><span>Win rate</span><b>{pct(summary.winRate)}</b><small>{summary.wins} won / {summary.losses} lost</small></div>
                 <div className="kpi"><span>Profit factor</span><b>{num2(summary.profitFactor)}</b><small>gross +{money(summary.grossProfit)} / {money(summary.grossLoss)}</small></div>
                 <div className="kpi"><span>Expectancy</span><b className={cls(summary.expectancy)}>{money(summary.expectancy, true)}</b><small>per trade, after costs</small></div>
-                <div className="kpi"><span>Avg R</span><b className={cls(summary.avgR)}>{num2(summary.avgR)}</b><small>{summary.rTrades} of {summary.trades} trades had an initial stop</small></div>
+                <div className="kpi"><span>Avg R</span><b className={cls(summary.avgR)}>{num2(summary.avgR)}</b><small>{summary.rTrades} of {summary.trades} trades have a stop to measure risk from</small></div>
                 <div className="kpi"><span>Max drawdown</span><b className="neg">{money(dd.maximal.amount)}</b><small>{dd.maximal.percent.toFixed(2)}% of peak (closed trades)</small></div>
                 <div className="kpi"><span>Payoff ratio</span><b>{num2(summary.payoff)}</b><small>avg win {money(summary.avgWin)} / avg loss {money(summary.avgLoss)}</small></div>
                 <div className="kpi"><span>Longest losing streak</span><b>{summary.maxConsecutiveLosses}</b><small>best winning streak {summary.maxConsecutiveWins}</small></div>

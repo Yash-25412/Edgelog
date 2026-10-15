@@ -45,6 +45,8 @@ export interface Trade {
   riskMoney: number | null;
   /** net / riskMoney. Null when riskMoney is null. */
   rMultiple: number | null;
+  /** Which stop the risk came from: the one set at entry, or (fallback) the stop on the final position. */
+  rBasis?: "initial" | "final";
 }
 
 export type LedgerKind = "entry" | "exit" | "deposit" | "withdrawal" | "credit" | "other";

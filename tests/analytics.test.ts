@@ -71,3 +71,18 @@ test("small samples are flagged, not celebrated", () => {
   assert.equal(confidence(29), "low");
   assert.equal(confidence(30), "ok");
 });
+
+import { withFinalStopR } from "../src/lib/engine/rfallback.ts";
+test("trades without a stop-at-entry get R from the final stop when it is on the risk side", () => {
+  const adj = withFinalStopR(trades);
+  const missing = adj.filter((t) => t.rMultiple === null);
+  // only stops moved to/past break-even (and none missing) stay without R
+  assert.ok(missing.length <= 3, `still missing ${missing.length}`);
+  assert.ok(missing.every((t) => (t.side === "buy" ? t.openPrice - t.sl! <= 0 : t.sl! - t.openPrice <= 0)));
+  const t = adj.find((x) => x.externalId === "203251190")!; // sell 4120.52, stop 4130.20, net +61.33
+  assert.equal(t.rBasis, "final");
+  assert.equal(t.riskMoney, 19.36);
+  assert.equal(t.rMultiple, 3.17);
+  // originals untouched
+  assert.equal(adj.find((x) => x.externalId === "199399232")!.rBasis, "initial");
+});

@@ -92,7 +92,7 @@ export const NO_STOP = "No stop at entry";
 
 /** Did the order carry a (valid) stop loss when it was placed? */
 export function byStopDiscipline(trades: Trade[]): Bucket[] {
-  return bucketBy(trades, (t) => [t.riskMoney !== null ? STOP_SET : NO_STOP]).sort((a, b) => (a.key === STOP_SET ? -1 : 1) - (b.key === STOP_SET ? -1 : 1));
+  return bucketBy(trades, (t) => [t.initialSl !== null ? STOP_SET : NO_STOP]).sort((a, b) => (a.key === STOP_SET ? -1 : 1) - (b.key === STOP_SET ? -1 : 1));
 }
 
 /** Trades per direction of position size relative to the account's typical size. */

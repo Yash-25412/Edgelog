@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { getSupabase } from "@/lib/supabase";
 import { rowToTrade } from "@/lib/db";
+import { withFinalStopR } from "@/lib/engine/rfallback";
 import { rowToChart } from "@/lib/charts";
 import { TradeChart } from "@/components/TradeChart";
 import type { ChartWindow } from "@/lib/engine/chartwindow";
@@ -64,7 +65,11 @@ export default function TradePage() {
         setLoading(false);
         return;
       }
-      setTrade(rowToTrade(row));
+      const own = rowToTrade(row);
+      // risk from the final stop needs the contract size, which is inferred from the account's trades in this symbol
+      const { data: peers } = await sb.from("trades").select("*").eq("account_id", row.account_id).eq("symbol", row.symbol).limit(1000);
+      const adj = withFinalStopR((peers ?? []).map(rowToTrade));
+      setTrade(adj.find((t) => t.externalId === own.externalId) ?? own);
 
       const { data: ch } = await sb.from("trade_charts").select("*").eq("trade_id", id).maybeSingle();
       if (ch) setChart(rowToChart(ch)); // no chart yet, or the table is not created: the page works without it
@@ -269,7 +274,7 @@ export default function TradePage() {
           <div><span>Exit</span><b>{EXIT_NAME[trade.exitReason ?? "manual"]}</b></div>
           <div><span>Stop at entry</span><b>{trade.initialSl ?? "none"}</b></div>
           <div><span>Target at entry</span><b>{trade.initialTp ?? "none"}</b></div>
-          <div><span>Risk</span><b>{trade.riskMoney === null ? "unknown" : money(trade.riskMoney)}</b></div>
+          <div><span>Risk{trade.rBasis === "final" ? " (final stop)" : ""}</span><b>{trade.riskMoney === null ? "unknown" : money(trade.riskMoney)}</b></div>
           <div><span>Result in R</span><b className={cls(trade.rMultiple)}>{trade.rMultiple === null ? "–" : num2(trade.rMultiple) + "R"}</b></div>
           <div><span>Profit</span><b>{money(trade.profit, true)}</b></div>
           <div><span>Commission + swap</span><b>{money(trade.commission + trade.swap, true)}</b></div>
