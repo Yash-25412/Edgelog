@@ -5,15 +5,17 @@ import type { Bar } from "../import/bars.ts";
  * Picks the candle size and the 100-bar window for a trade's chart.
  *
  * Rule: use the smallest timeframe in which the trade spans at most MAX_TRADE_BARS bars,
- * then show WINDOW_BARS bars with BARS_BEFORE bars of context before the entry bar.
- * Whatever is left of the 100 bars shows what happened after the exit.
+ * show WINDOW_BARS bars in total, end the chart BARS_AFTER bars after the exit bar, and spend
+ * everything else on the run-up before the entry. The run-up is what explains why the level
+ * was marked, so it gets the room; what happened after the exit matters far less.
  * Bars are counted, not timed, so weekend gaps never leave a half-empty chart.
  */
 
 export const TIMEFRAMES = [1, 5, 15, 30, 60, 240, 1440] as const; // minutes
 export const WINDOW_BARS = 100;
 export const MAX_TRADE_BARS = 40;
-export const BARS_BEFORE = 30;
+/** Candles shown after the exit candle. Kept short on purpose (5 to 10). */
+export const BARS_AFTER = 8;
 
 const MIN = 60_000;
 const ms = (s: Stamp) => Date.parse(s + "Z");
@@ -62,7 +64,7 @@ export interface ChartWindow {
   /** Index (inside candles) of the bar containing the entry / exit. */
   entryIndex: number;
   exitIndex: number;
-  /** True when the data did not reach back or forward far enough for the full 100 bars. */
+  /** True when the data did not reach back far enough for the full 100 bars. */
   truncated: boolean;
 }
 
@@ -79,10 +81,10 @@ export function chartWindow(trade: Pick<Trade, "openTime" | "closeTime">, m1: Ba
   for (let i = candles.length - 1; i >= 0; i--) if (candles[i].time <= exitStart) { exitAt = i; break; }
   if (entryAt === -1 || exitAt === -1 || candles[entryAt].time > exitStart || candles[exitAt].time < entryStart) return null;
 
-  let from = entryAt - BARS_BEFORE;
-  let to = from + WINDOW_BARS; // exclusive
-  if (to > candles.length) { to = candles.length; from = Math.max(0, to - WINDOW_BARS); }
-  if (from < 0) { from = 0; to = Math.min(candles.length, WINDOW_BARS); }
+  // End BARS_AFTER bars after the exit (or at the last candle we have), then fill backwards.
+  // If the data does not reach back far enough the chart is shorter; it never borrows extra candles from after the trade.
+  const to = Math.min(candles.length, exitAt + BARS_AFTER + 1); // exclusive
+  const from = Math.max(0, to - WINDOW_BARS);
   const slice = candles.slice(from, to);
   return {
     tfMinutes: tf,

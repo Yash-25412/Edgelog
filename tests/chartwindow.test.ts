@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { parseMt5Bars } from "../src/lib/import/bars.ts";
-import { aggregate, alignment, bucketStart, chartWindow, chooseTimeframe } from "../src/lib/engine/chartwindow.ts";
+import { aggregate, alignment, BARS_AFTER, bucketStart, chartWindow, chooseTimeframe } from "../src/lib/engine/chartwindow.ts";
 
 // All of 25 Sep 2026 from a real MT5 "Export Bars" file (XAUUSD, M1, broker time).
 const { bars: m1, skipped } = parseMt5Bars(readFileSync(new URL("./fixtures/xauusd-m1-2026-09-25.csv", import.meta.url), "utf8"));
@@ -58,28 +58,34 @@ test("5-minute candles are exact roll-ups of the 1-minute bars", () => {
   assert.equal(m1.length === 1380 && c5.length, 276); // 23h of 5-minute candles
 });
 
-test("the 25 Sep trade gets 100 five-minute candles, 30 before entry", () => {
+test("the 25 Sep trade gets 100 five-minute candles: long run-up, 8 candles after the exit", () => {
   const w = chartWindow(trade, m1)!;
   assert.equal(w.tfMinutes, 5);
   assert.equal(w.candles.length, 100);
   assert.equal(w.truncated, false);
-  assert.equal(w.entryIndex, 30);
   assert.equal(w.candles[w.entryIndex].time, "2026-09-25T14:10:00");
   assert.equal(w.candles[w.exitIndex].time, "2026-09-25T16:15:00");
   assert.equal(w.exitIndex - w.entryIndex, 25); // 26 candles contain the trade
-  assert.equal(w.candles[0].time, "2026-09-25T11:40:00");
-  assert.equal(w.candles.at(-1)!.time, "2026-09-25T19:55:00");
+  assert.equal(w.candles.length - 1 - w.exitIndex, BARS_AFTER); // 8 candles after the exit candle
+  assert.equal(w.entryIndex, 66); // 66 candles of run-up
+  assert.equal(w.candles[0].time, "2026-09-25T08:40:00");
+  assert.equal(w.candles.at(-1)!.time, "2026-09-25T16:55:00");
+  assert.ok(BARS_AFTER >= 5 && BARS_AFTER <= 10);
 });
 
-test("window slides when the trade is near the start or end of the data", () => {
+test("after-exit candles never exceed the limit, and the window is shorter rather than padded when data is short", () => {
+  // trade early in the data: only 4 candles exist before entry, so the chart is short, not stretched forward
   const early = chartWindow({ openTime: "2026-09-25T01:20:00", closeTime: "2026-09-25T03:20:00" }, m1)!;
   assert.equal(early.candles[0].time, "2026-09-25T01:00:00");
-  assert.equal(early.candles.length, 100);
   assert.equal(early.entryIndex, 4);
-  const late = chartWindow({ openTime: "2026-09-25T22:00:00", closeTime: "2026-09-25T23:30:00" }, m1)!;
+  assert.equal(early.candles.length - 1 - early.exitIndex, BARS_AFTER);
+  assert.equal(early.candles.length, 4 + 25 + BARS_AFTER); // run-up + trade candles + after
+  assert.equal(early.truncated, true);
+  // trade right at the end of the data: fewer than 8 candles after, still 100 candles in total
+  const late = chartWindow({ openTime: "2026-09-25T22:00:00", closeTime: "2026-09-25T23:50:00" }, m1)!;
   assert.equal(late.candles.length, 100);
   assert.equal(late.candles.at(-1)!.time, "2026-09-25T23:55:00");
-  assert.ok(late.entryIndex > 30);
+  assert.ok(late.candles.length - 1 - late.exitIndex < BARS_AFTER);
 });
 
 test("no data for the trade means no chart, not a wrong chart", () => {
