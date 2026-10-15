@@ -14,6 +14,8 @@ export interface Fill {
 
 /** One closed position (a round trip) as reported by the platform. */
 export interface Trade {
+  /** Database row id. Only set for trades loaded from the database. */
+  dbId?: string;
   /** Platform position id; unique per account. */
   externalId: string;
   symbol: string;

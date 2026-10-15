@@ -53,6 +53,7 @@ const n = (v: any) => (v === null || v === undefined ? null : Number(v));
 
 export function rowToTrade(r: any): Trade {
   return {
+    dbId: r.id,
     externalId: r.external_id,
     symbol: r.symbol,
     side: r.side,

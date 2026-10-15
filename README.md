@@ -8,8 +8,8 @@ Trading journal and analytics for day, swing and prop-firm traders. Multi-user.
 |---|---|---|
 | 0 | Repo, Supabase, Vercel, login | App written (login, upload, dashboard). Not yet built or deployed |
 | 1 | MT5 import + trade engine + database schema | Parser, stats and schema tested. Upload screen written, untested in a browser |
-| 2 | Dashboard (KPIs, equity curve, calendar, multi-account) | First version written (no calendar yet) |
-| 3 | Journal + analytics | Not started |
+| 2 | Dashboard (KPIs, equity curve, calendar, multi-account) | Done: overview, P&L calendar, account switcher |
+| 3 | Journal + analytics | Done: edge cuts (hour, weekday, exit, stop discipline), per-trade journal with tags, mistakes, emotion, screenshots |
 | 4 | Broker auto-sync | Not started |
 | 5 | AI coach | Not started |
 | 6 | X-factor features | Not started |
@@ -28,6 +28,8 @@ and check the result against the figures MetaTrader prints in that same file.
 - `src/lib/import/mt5.ts` – MT5 "Trade History Report" parser (pure function on rows)
 - `src/lib/import/xlsx.ts` – turns an uploaded .xlsx into rows (not yet tested)
 - `src/lib/engine/stats.ts` – win rate, profit factor, expectancy, drawdown, streaks, equity curve
+- `src/lib/engine/analytics.ts` – hour / weekday / exit / stop-discipline / tag buckets, daily P&L, sample-size confidence
+- `src/components/` – Calendar and Edge tab; `src/app/trades/[id]` – per-trade journal page
 - `src/lib/types.ts` – shared types
 - `supabase/migrations/0001_core.sql` – tables with per-user Row Level Security
 - `scripts/xlsx_to_rows.py` – dev helper to make a new test fixture from an .xlsx
@@ -42,7 +44,7 @@ and check the result against the figures MetaTrader prints in that same file.
 
 ## Deploying
 
-1. Run `supabase/migrations/0001_core.sql` once in the Supabase SQL Editor.
+1. Run `supabase/migrations/0001_core.sql`, then `0002_journal.sql`, once each in the Supabase SQL Editor.
 2. In Vercel set `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` (see `.env.example`).
 3. Deploy. Only the public anon key is used; Row Level Security keeps each user's data private.
 
