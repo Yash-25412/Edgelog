@@ -191,3 +191,26 @@ textarea:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
 .kpis .kpi { animation: rise .55s cubic-bezier(.2,.8,.2,1) both; }
 .kpis .kpi:nth-child(2) { animation-delay: .06s } .kpis .kpi:nth-child(3) { animation-delay: .12s } .kpis .kpi:nth-child(4) { animation-delay: .18s }
 .kpis .kpi:nth-child(5) { animation-delay: .24s } .kpis .kpi:nth-child(6) { animation-delay: .3s } .kpis .kpi:nth-child(7) { animation-delay: .36s }
+
+/* ---- calendar life ---- */
+.cal-cell.pop { animation: popin .45s cubic-bezier(.2,.9,.3,1.2) both; position: relative; transition: transform .15s ease; }
+@keyframes popin { from { opacity: 0; transform: scale(.7); } to { opacity: 1; transform: none; } }
+button.cal-cell:not(:disabled):hover { transform: translateY(-3px) scale(1.04); z-index: 5; }
+.cal-cell.best { border-color: var(--pos); }
+.cal-cell.worst { border-color: var(--neg); }
+.cal-tip { display: none; position: absolute; left: 50%; bottom: calc(100% + 8px); transform: translateX(-50%); min-width: 190px; background: #0b0e13; border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; z-index: 20; box-shadow: 0 12px 30px rgba(0,0,0,.5); font-size: 12px; text-align: left; pointer-events: none; gap: 3px; flex-direction: column; }
+button.cal-cell:hover .cal-tip, button.cal-cell:focus-visible .cal-tip { display: flex; animation: rise .18s ease both; }
+.tip-row { display: flex; align-items: center; gap: 6px; white-space: nowrap; color: var(--text); }
+.tip-row b { margin-left: auto; padding-left: 10px; font-size: 12px; }
+.dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; }
+.dot.up { background: var(--pos); } .dot.down { background: var(--neg); }
+.cal .cal-cell:nth-child(8n+1) .cal-tip, .cal .cal-cell:nth-child(8n+2) .cal-tip { left: 0; transform: none; }
+.cal .cal-cell:nth-child(8n+6) .cal-tip, .cal .cal-cell:nth-child(8n+7) .cal-tip { left: auto; right: 0; transform: none; }
+@media (max-width: 640px) { .cal-tip { display: none !important; } }
+/* ---- bars life ---- */
+.bars-bar { animation: growx .8s cubic-bezier(.2,.8,.2,1) both; transition: filter .2s, opacity .2s; }
+@keyframes growx { from { transform: scaleX(0); } }
+.bars-row.hov:hover .bars-bar { opacity: .95; filter: brightness(1.2); }
+.bars-row.hov:hover .bars-label { color: var(--accent); }
+.bars-row.glow-up .bars-bar { box-shadow: 0 0 14px 2px var(--pos); opacity: .8; }
+.bars-row.glow-down .bars-bar { box-shadow: 0 0 14px 2px var(--neg); opacity: .8; }

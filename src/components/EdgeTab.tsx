@@ -12,6 +12,8 @@ const cls = (n: number | null) => (n === null || n === 0 ? "" : n > 0 ? "pos" : 
 
 function Bars({ title, note, rows, label }: { title: string; note?: string; rows: Bucket[]; label?: (k: string) => string }) {
   const max = Math.max(1, ...rows.map((r) => Math.abs(r.net)));
+  const best = rows.length ? rows.reduce((a, b) => (b.net > a.net ? b : a)).key : null;
+  const worst = rows.length ? rows.reduce((a, b) => (b.net < a.net ? b : a)).key : null;
   return (
     <section className="card">
       <h2>{title}</h2>
@@ -27,14 +29,14 @@ function Bars({ title, note, rows, label }: { title: string; note?: string; rows
             <span className="r">Win</span>
             <span className="r">Avg R</span>
           </div>
-          {rows.map((r) => {
+          {rows.map((r, idx) => {
             const w = (Math.abs(r.net) / max) * 50;
             return (
-              <div key={r.key} className={"bars-row" + (r.confidence === "very low" ? " faint" : "")}>
+              <div key={r.key} className={"bars-row hov" + (r.confidence === "very low" ? " faint" : "") + (r.key === best && r.net > 0 ? " glow-up" : "") + (r.key === worst && r.net < 0 ? " glow-down" : "")}>
                 <span className="bars-label">{label ? label(r.key) : r.key}</span>
                 <span className="bars-track" title={`${money(r.net, true)} over ${r.n} trades`}>
                   <i className="bars-mid" />
-                  <i className={"bars-bar " + (r.net >= 0 ? "up" : "down")} style={r.net >= 0 ? { left: "50%", width: `${w}%` } : { left: `${50 - w}%`, width: `${w}%` }} />
+                  <i className={"bars-bar " + (r.net >= 0 ? "up" : "down")} style={{ ...(r.net >= 0 ? { left: "50%", width: `${w}%`, transformOrigin: "left" } : { left: `${50 - w}%`, width: `${w}%`, transformOrigin: "right" }), animationDelay: `${idx * 45}ms` }} />
                   <b className={"bars-val " + cls(r.net)}>{money(r.net, true)}</b>
                 </span>
                 <span className="r">

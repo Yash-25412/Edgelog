@@ -48,6 +48,9 @@ export function Calendar({ trades }: { trades: Trade[] }) {
   const green = monthDays.filter((d) => d.net > 0).length;
   const red = monthDays.filter((d) => d.net < 0).length;
   const maxAbs = Math.max(1, ...monthDays.map((d) => Math.abs(d.net)));
+  const bestDay = monthDays.length ? monthDays.reduce((a, b) => (b.net > a.net ? b : a)).date : null;
+  const worstDay = monthDays.length ? monthDays.reduce((a, b) => (b.net < a.net ? b : a)).date : null;
+  const tradesOn = (d: string) => trades.filter((t) => t.closeTime.slice(0, 10) === d).sort((a, b) => (a.closeTime < b.closeTime ? -1 : 1));
 
   const dayTrades = picked ? trades.filter((t) => t.closeTime.slice(0, 10) === picked).sort((a, b) => (a.closeTime < b.closeTime ? -1 : 1)) : [];
   const dayInfo = picked ? byDate.get(picked) : undefined;
@@ -63,7 +66,7 @@ export function Calendar({ trades }: { trades: Trade[] }) {
         </span>
       </div>
 
-      <div className="cal">
+      <div className="cal" key={ym}>
         {DOW.map((d) => <div key={d} className="cal-dow">{d}</div>)}
         <div className="cal-dow">Week</div>
         {weeks.map((w, wi) => {
@@ -71,6 +74,7 @@ export function Calendar({ trades }: { trades: Trade[] }) {
           const weekCount = w.reduce((s, d) => s + (d ? byDate.get(d)?.trades ?? 0 : 0), 0);
           return [
             ...w.map((d, di) => {
+              const order = wi * 7 + di;
               if (!d) return <div key={`${wi}-${di}`} className="cal-cell blank" />;
               const info = byDate.get(d);
               const alpha = info ? 0.14 + 0.5 * (Math.abs(info.net) / maxAbs) : 0;
@@ -78,17 +82,28 @@ export function Calendar({ trades }: { trades: Trade[] }) {
               return (
                 <button
                   key={`${wi}-${di}`}
-                  className={"cal-cell" + (picked === d ? " picked" : "") + (info ? "" : " idle")}
-                  style={{ background: bg }}
+                  className={"cal-cell pop" + (picked === d ? " picked" : "") + (info ? "" : " idle") + (info && d === bestDay && info.net > 0 ? " best" : "") + (info && d === worstDay && info.net < 0 ? " worst" : "")}
+                  style={{ background: bg, animationDelay: `${order * 18}ms`, boxShadow: info ? `0 0 ${Math.round(18 * (Math.abs(info.net) / maxAbs))}px -4px ${info.net >= 0 ? "rgba(45,212,168,.55)" : "rgba(255,107,107,.55)"}` : undefined }}
                   disabled={!info}
                   onClick={() => setPicked(picked === d ? null : d)}
                   aria-label={info ? `${d}: ${money(info.net, true)}, ${info.trades} trades` : d}
                 >
-                  <span className="cal-day">{Number(d.slice(8))}</span>
+                  <span className="cal-day">{Number(d.slice(8))}{info && d === bestDay && info.net > 0 ? " 🏆" : ""}{info && d === worstDay && info.net < 0 ? " 💀" : ""}</span>
                   {info && (
                     <>
                       <b className="cal-net">{money(info.net, true)}</b>
                       <small>{info.trades} {info.trades === 1 ? "trade" : "trades"}</small>
+                      <span className="cal-tip" role="tooltip">
+                        <strong>{d} · {money(info.net, true)}</strong>
+                        {tradesOn(d).slice(0, 8).map((t) => (
+                          <span key={t.externalId} className="tip-row">
+                            <i className={t.net >= 0 ? "dot up" : "dot down"} />
+                            {t.closeTime.slice(11, 16)} {t.symbol} {t.side === "buy" ? "L" : "S"}
+                            <b className={cls(t.net)}>{money(t.net, true)}</b>
+                          </span>
+                        ))}
+                        {info.trades > 8 && <span className="tip-row muted">+{info.trades - 8} more</span>}
+                      </span>
                     </>
                   )}
                 </button>
