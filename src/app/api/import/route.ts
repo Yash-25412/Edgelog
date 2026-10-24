@@ -41,10 +41,21 @@ export async function POST(req: Request) {
 
   let report;
   try {
-    const rows = await readXlsxRows(new Uint8Array(await file.arrayBuffer()));
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    const head = new TextDecoder("utf-8").decode(bytes.slice(0, 200)).trimStart().toLowerCase();
+    const isZip = bytes[0] === 0x50 && bytes[1] === 0x4b; // "PK": a real .xlsx is a zip file
+    if (!isZip) {
+      const kind = head.startsWith("<html") || head.includes("<table") ? "a web page (HTML)" : head.startsWith("<?xml") ? "a plain XML file" : "not an Excel file";
+      return fail(`This file is ${kind} saved with an .xlsx name, so it cannot be read. Open it in Excel, choose File > Save As > Excel Workbook (.xlsx), and upload the new file.`);
+    }
+    const rows = await readXlsxRows(bytes);
     report = parseMt5Report(rows);
   } catch (e) {
-    return fail(e instanceof Error ? e.message : "Could not read that file.");
+    const msg = e instanceof Error ? e.message : "Could not read that file.";
+    if (/disallowed character|unexpected|xml/i.test(msg)) {
+      return fail("The spreadsheet's inner XML is damaged or unusual (" + msg + "). Open it in Excel, choose File > Save As > Excel Workbook (.xlsx), and upload the re-saved copy. If it still fails, send me the file.");
+    }
+    return fail(msg);
   }
   if (!report.trades.length) return fail("No closed trades found in that report.");
 
