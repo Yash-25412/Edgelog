@@ -4,6 +4,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { getSupabase } from "@/lib/supabase";
+import { CountUp, Reveal, Ring } from "@/components/Fx";
+import { EquityCurve } from "@/components/EquityCurve";
 import { Calendar } from "@/components/Calendar";
 import { EdgeTab } from "@/components/EdgeTab";
 import { rowToJournal, type Journal } from "@/lib/journal";
@@ -13,7 +15,7 @@ import { chartToRow } from "@/lib/charts";
 import { rowToTrade, tradeToRow } from "@/lib/db";
 import { withFinalStopR } from "@/lib/engine/rfallback";
 import { buildManualTrade } from "@/lib/manual";
-import { summarize, drawdown, equityCurve, type CurvePoint } from "@/lib/engine/stats";
+import { summarize, drawdown, equityCurve } from "@/lib/engine/stats";
 import type { Trade } from "@/lib/types";
 import { duration, money, num2, pct, shortStamp } from "@/lib/format";
 
@@ -58,33 +60,6 @@ function recall(key: string): string | null {
 }
 
 const cls = (n: number | null) => (n === null || n === 0 ? "" : n > 0 ? "pos" : "neg");
-
-function EquityChart({ start, points }: { start: number; points: CurvePoint[] }) {
-  const W = 800, H = 220, PADL = 8, PADR = 8, PADT = 12, PADB = 12;
-  const values = [start, ...points.map((p) => p.balance)];
-  const lo = Math.min(...values), hi = Math.max(...values);
-  const span = hi - lo || 1;
-  const x = (i: number) => PADL + (i / Math.max(values.length - 1, 1)) * (W - PADL - PADR);
-  const y = (v: number) => PADT + (1 - (v - lo) / span) * (H - PADT - PADB);
-  const line = values.map((v, i) => `${i ? "L" : "M"}${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(" ");
-  const area = `${line} L${x(values.length - 1).toFixed(1)},${H - PADB} L${x(0).toFixed(1)},${H - PADB} Z`;
-  const end = values[values.length - 1];
-  return (
-    <div>
-      <svg viewBox={`0 0 ${W} ${H}`} className="chart" role="img" aria-label="Equity curve">
-        <path d={area} className="chart-area" />
-        <line x1={PADL} x2={W - PADR} y1={y(start)} y2={y(start)} className="chart-base" />
-        <path d={line} className="chart-line" />
-      </svg>
-      <div className="chart-axis">
-        <span>Start {money(start)}</span>
-        <span>Low {money(lo)}</span>
-        <span>High {money(hi)}</span>
-        <span>Now {money(end)}</span>
-      </div>
-    </div>
-  );
-}
 
 export default function Dashboard() {
   const router = useRouter();
@@ -245,6 +220,29 @@ export default function Dashboard() {
 
   const summary = useMemo(() => summarize(trades), [trades]);
   const curve = useMemo(() => equityCurve(start, trades), [start, trades]);
+  const extras = useMemo(() => {
+    const by = new Map<string, Trade>(trades.map((t) => [t.externalId, t] as [string, Trade]));
+    return curve.map((c) => { const t = by.get(c.tradeId); return { symbol: t?.symbol ?? "", side: t?.side ?? "", net: t?.net ?? 0 }; });
+  }, [curve, trades]);
+  const streak = useMemo(() => {
+    const ts = [...trades].sort((a, b) => (a.closeTime < b.closeTime ? -1 : 1));
+    let n = 0, dir = 0;
+    for (let i = ts.length - 1; i >= 0; i--) {
+      const d = ts[i].net > 0 ? 1 : ts[i].net < 0 ? -1 : 0;
+      if (d === 0) break;
+      if (dir === 0) dir = d;
+      if (d !== dir) break;
+      n++;
+    }
+    return { n, dir };
+  }, [trades]);
+  async function deleteTrade(t: Trade) {
+    if (!t.dbId) return;
+    if (!window.confirm(`Delete ${t.symbol} ${t.side === "buy" ? "long" : "short"} of ${shortStamp(t.openTime)}? Its journal entry and chart go too. This cannot be undone.`)) return;
+    const { error } = await getSupabase().from("trades").delete().eq("id", t.dbId);
+    if (error) return setError(error.message);
+    setTrades((all) => all.filter((x) => x.dbId !== t.dbId));
+  }
   const dd = useMemo(() => drawdown([start, ...curve.map((c) => c.balance)]), [start, curve]);
   const recent = useMemo(() => [...trades].reverse().slice(0, 200), [trades]);
 
@@ -555,9 +553,25 @@ export default function Dashboard() {
 
           {tab === "overview" && (
             <>
+              <section className="hero">
+                <Reveal className="tile">
+                  <span className="lab">Net P&amp;L, after costs</span>
+                  <span className={"big " + cls(summary.net)}><CountUp value={summary.net} format={(n) => money(n, true)} /></span>
+                  <div className="chips">
+                    <span className="chip">{summary.trades} trades</span>
+                    {streak.n >= 2 && <span className={"chip " + (streak.dir > 0 ? "hot" : "cold")}>{streak.dir > 0 ? "🔥" : "🧊"} {streak.n} {streak.dir > 0 ? "wins" : "losses"} in a row</span>}
+                    <span className="chip">best streak {summary.maxConsecutiveWins}W / worst {summary.maxConsecutiveLosses}L</span>
+                  </div>
+                </Reveal>
+                <Reveal i={1} className="tile"><Ring frac={summary.winRate} label={pct(summary.winRate)} sub="win rate" /></Reveal>
+                <Reveal i={2} className="tile">
+                  <span className="lab">Profit factor</span>
+                  <span className="big"><CountUp value={summary.profitFactor} format={(n) => n.toFixed(2)} /></span>
+                  <span className="lab">avg R <b className={cls(summary.avgR)}><CountUp value={summary.avgR} format={(n) => n.toFixed(2)} /></b></span>
+                </Reveal>
+              </section>
+
               <section className="kpis">
-                <div className="kpi"><span>Net P&amp;L</span><b className={cls(summary.net)}>{money(summary.net, true)}</b><small>{summary.trades} trades</small></div>
-                <div className="kpi"><span>Win rate</span><b>{pct(summary.winRate)}</b><small>{summary.wins} won / {summary.losses} lost</small></div>
                 <div className="kpi"><span>Profit factor</span><b>{num2(summary.profitFactor)}</b><small>gross +{money(summary.grossProfit)} / {money(summary.grossLoss)}</small></div>
                 <div className="kpi"><span>Expectancy</span><b className={cls(summary.expectancy)}>{money(summary.expectancy, true)}</b><small>per trade, after costs</small></div>
                 <div className="kpi"><span>Avg R</span><b className={cls(summary.avgR)}>{num2(summary.avgR)}</b><small>{summary.rTrades} of {summary.trades} trades have a stop to measure risk from</small></div>
@@ -568,7 +582,7 @@ export default function Dashboard() {
 
               <section className="card">
                 <h2>Equity curve</h2>
-                <EquityChart start={start} points={curve} />
+                <EquityCurve start={start} points={curve} extras={extras} />
               </section>
 
               <section className="grid2">
@@ -610,7 +624,7 @@ export default function Dashboard() {
                     <tr>
                       <th>Closed</th><th>Symbol</th><th>Side</th><th className="r">Lots</th>
                       <th className="r">Entry</th><th className="r">Exit</th><th>Exit by</th>
-                      <th className="r">R</th><th className="r">Net</th><th>Chart</th><th>Journal</th>
+                      <th className="r">R</th><th className="r">Net</th><th>Chart</th><th>Journal</th><th></th>
                     </tr>
                   </thead>
                   <tbody>
@@ -630,6 +644,7 @@ export default function Dashboard() {
                           <td className={"r " + cls(t.net)}>{money(t.net, true)}</td>
                           <td className="muted">{t.dbId && chartIds?.has(t.dbId) ? "✓" : "–"}</td>
                           <td>{t.dbId && <Link href={`/trades/${t.dbId}`}>{hasEntry ? "Edit ✓" : "Add"}</Link>}</td>
+                          <td>{t.dbId && <button type="button" className="link danger" onClick={() => deleteTrade(t)} aria-label="Delete trade">Delete</button>}</td>
                         </tr>
                       );
                     })}

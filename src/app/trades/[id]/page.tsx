@@ -200,6 +200,20 @@ export default function TradePage() {
     await save({ screenshots: next });
   }
 
+  async function deleteThisTrade() {
+    if (!trade?.dbId) return;
+    if (!window.confirm("Delete this trade? Its journal entry and chart are deleted too. This cannot be undone.")) return;
+    const sb = getSupabase();
+    // best effort: remove saved screenshots from storage first
+    try {
+      const { data: files } = await sb.storage.from(BUCKET).list(`${userId}/${trade.dbId}`);
+      if (files?.length) await sb.storage.from(BUCKET).remove(files.map((f: any) => `${userId}/${trade.dbId}/${f.name}`));
+    } catch { /* the trade can still be deleted */ }
+    const { error } = await sb.from("trades").delete().eq("id", trade.dbId);
+    if (error) return setMessage({ kind: "bad", text: error.message });
+    router.replace("/dashboard");
+  }
+
   async function saveChartToJournal() {
     const svg = svgRef.current;
     if (!svg || !userId) return;
@@ -290,6 +304,7 @@ export default function TradePage() {
       <section className="card">
         <div className="chart-head">
           <h2>Chart</h2>
+          <button type="button" className="danger" onClick={deleteThisTrade}>Delete trade</button>
           {chart && !journalMissing && (
             <button type="button" onClick={saveChartToJournal} disabled={savingChart}>
               {savingChart ? "Saving…" : "Save chart to journal screenshots"}

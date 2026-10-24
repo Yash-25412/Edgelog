@@ -151,3 +151,43 @@ textarea:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
 .tchart-full { position: fixed; inset: 0; z-index: 1000; border-radius: 0; border: 0; background: #0e1116; display: flex; flex-direction: column; justify-content: center; }
 .tchart-full svg { width: 100% !important; height: auto !important; max-height: calc(100vh - 56px); }
 .tchart-full .chart-expand { top: 12px; right: 16px; }
+
+/* ---- motion & life ---- */
+@keyframes rise { from { opacity: 0; transform: translateY(14px) scale(.985); } to { opacity: 1; transform: none; } }
+.reveal { animation: rise .55s cubic-bezier(.2,.8,.2,1) both; }
+.kpi { transition: transform .2s ease, border-color .2s ease, box-shadow .2s ease; }
+.kpi:hover { transform: translateY(-3px); border-color: color-mix(in srgb, var(--accent) 55%, var(--line)); box-shadow: 0 8px 28px -12px color-mix(in srgb, var(--accent) 45%, transparent); }
+.card { transition: border-color .2s ease; }
+.hero { display: grid; grid-template-columns: 1.6fr 1fr 1fr; gap: 12px; }
+.hero .tile { background: radial-gradient(120% 140% at 0% 0%, color-mix(in srgb, var(--accent) 14%, var(--panel)), var(--panel) 60%); border: 1px solid var(--line); border-radius: 14px; padding: 18px; display: grid; align-content: center; gap: 4px; }
+.hero .big { font-size: clamp(34px, 6vw, 52px); font-weight: 750; letter-spacing: -.03em; font-variant-numeric: tabular-nums; line-height: 1.05; }
+.hero .tile .lab { color: var(--muted); font-size: 13px; }
+.ring { width: 130px; margin: 0 auto; }
+.ring-arc { animation: ringfill 1.4s cubic-bezier(.2,.8,.2,1) both; }
+@keyframes ringfill { from { stroke-dashoffset: var(--c); } }
+.chips { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 6px; }
+.chip { font-size: 12px; padding: 3px 10px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); }
+.chip.hot { color: var(--pos); border-color: color-mix(in srgb, var(--pos) 50%, var(--line)); }
+.chip.cold { color: var(--neg); border-color: color-mix(in srgb, var(--neg) 50%, var(--line)); }
+@media (max-width: 760px) { .hero { grid-template-columns: 1fr; } }
+.eq-head { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; align-items: flex-start; margin-bottom: 8px; }
+.eq-big { font-size: 30px; font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: -.02em; }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 999px; overflow: hidden; }
+.seg button { border: 0; border-radius: 0; background: transparent; padding: 5px 12px; font-size: 13px; color: var(--muted); cursor: pointer; }
+.seg button.on { background: var(--accent); color: var(--accent-ink); }
+.eq-svg { width: 100%; height: auto; display: block; touch-action: pan-y; cursor: crosshair; }
+.eq-bars { width: 100%; height: auto; display: block; margin-top: 4px; }
+.eq-line { stroke-dasharray: 1; stroke-dashoffset: 1; animation: draw 1.6s cubic-bezier(.4,0,.2,1) forwards; }
+@keyframes draw { to { stroke-dashoffset: 0; } }
+.eq-area { opacity: 0; animation: fadein 1s ease .9s forwards; }
+.eq-marks { opacity: 0; animation: fadein .6s ease 1.5s forwards; }
+@keyframes fadein { to { opacity: 1; } }
+.eq-pulse { animation: pulse 1.8s ease-out infinite; transform-box: fill-box; transform-origin: center; }
+@keyframes pulse { 0% { transform: scale(1); opacity: 1; } 70% { transform: scale(2.6); opacity: .1; } 100% { transform: scale(1); opacity: 1; } }
+.eq-bar { transform-box: fill-box; transform-origin: center; animation: grow .5s ease both; transition: opacity .15s; }
+@keyframes grow { from { transform: scaleY(0); } }
+.danger { border-color: color-mix(in srgb, var(--neg) 60%, var(--line)); color: var(--neg); }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } .eq-line { stroke-dashoffset: 0; } .eq-area, .eq-marks { opacity: 1; } }
+.kpis .kpi { animation: rise .55s cubic-bezier(.2,.8,.2,1) both; }
+.kpis .kpi:nth-child(2) { animation-delay: .06s } .kpis .kpi:nth-child(3) { animation-delay: .12s } .kpis .kpi:nth-child(4) { animation-delay: .18s }
+.kpis .kpi:nth-child(5) { animation-delay: .24s } .kpis .kpi:nth-child(6) { animation-delay: .3s } .kpis .kpi:nth-child(7) { animation-delay: .36s }
