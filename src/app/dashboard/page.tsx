@@ -6,6 +6,10 @@ import { useRouter } from "next/navigation";
 import { getSupabase } from "@/lib/supabase";
 import { CountUp, Reveal, Ring } from "@/components/Fx";
 import { EquityCurve } from "@/components/EquityCurve";
+import { TradesTable } from "@/components/TradesTable";
+import { insights } from "@/lib/engine/insights";
+import { rowToChart } from "@/lib/charts";
+import type { ChartWindow } from "@/lib/engine/chartwindow";
 import { Calendar } from "@/components/Calendar";
 import { EdgeTab } from "@/components/EdgeTab";
 import { rowToJournal, type Journal } from "@/lib/journal";
@@ -236,6 +240,15 @@ export default function Dashboard() {
     }
     return { n, dir };
   }, [trades]);
+  const chartCache = useRef(new Map<string, ChartWindow | null>());
+  async function loadChart(dbId: string): Promise<ChartWindow | null> {
+    if (chartCache.current.has(dbId)) return chartCache.current.get(dbId) ?? null;
+    const { data } = await getSupabase().from("trade_charts").select("*").eq("trade_id", dbId).maybeSingle();
+    const c = data ? rowToChart(data) : null;
+    chartCache.current.set(dbId, c);
+    return c;
+  }
+  const tips = useMemo(() => insights(trades), [trades]);
   async function deleteTrade(t: Trade) {
     if (!t.dbId) return;
     if (!window.confirm(`Delete ${t.symbol} ${t.side === "buy" ? "long" : "short"} of ${shortStamp(t.openTime)}? Its journal entry and chart go too. This cannot be undone.`)) return;
@@ -244,7 +257,7 @@ export default function Dashboard() {
     setTrades((all) => all.filter((x) => x.dbId !== t.dbId));
   }
   const dd = useMemo(() => drawdown([start, ...curve.map((c) => c.balance)]), [start, curve]);
-  const recent = useMemo(() => [...trades].reverse().slice(0, 200), [trades]);
+  const recent = useMemo(() => [...trades].reverse().slice(0, 6), [trades]);
 
   async function signOut() {
     await getSupabase().auth.signOut();
@@ -587,6 +600,37 @@ export default function Dashboard() {
 
               <section className="grid2">
                 <div className="card">
+                  <h2>What your numbers say</h2>
+                  <ul className="insights">
+                    {tips.map((i, k) => (
+                      <li key={k} className={"ins " + i.tone} style={{ animationDelay: `${k * 90}ms` }}>
+                        <span className="ins-dot" />
+                        <span>{i.text}</span>
+                        {i.tab && <button type="button" className="link" onClick={() => { setTab(i.tab!); remember("edgelog.tab", i.tab!); }}>See →</button>}
+                      </li>
+                    ))}
+                  </ul>
+                  <p className="muted small">Computed from your trades. A pattern on a small sample is a question to test, not a rule.</p>
+                </div>
+                <div className="card">
+                  <h2>Latest trades</h2>
+                  <ul className="latest">
+                    {recent.map((t) => (
+                      <li key={t.externalId}>
+                        <i className={"dot " + (t.net >= 0 ? "up" : "down")} />
+                        <span className="muted small">{shortStamp(t.closeTime)}</span>
+                        <span>{t.symbol} {t.side === "buy" ? "Long" : "Short"}</span>
+                        <b className={"r " + cls(t.net)}>{money(t.net, true)}</b>
+                        {t.dbId && <Link href={`/trades/${t.dbId}`} className="small">Open →</Link>}
+                      </li>
+                    ))}
+                  </ul>
+                  <button type="button" className="link" onClick={() => { setTab("trades"); remember("edgelog.tab", "trades"); }}>All trades →</button>
+                </div>
+              </section>
+
+              <section className="grid2">
+                <div className="card">
                   <h2>Long vs short</h2>
                   <table>
                     <thead><tr><th>Side</th><th className="r">Trades</th><th className="r">Win rate</th><th className="r">Net</th></tr></thead>
@@ -616,42 +660,7 @@ export default function Dashboard() {
           {tab === "edge" && <EdgeTab trades={trades} journal={journal} />}
 
           {tab === "trades" && (
-            <section className="card">
-              <h2>Trades {trades.length > recent.length && <span className="muted small">(latest {recent.length})</span>}</h2>
-              <div className="scroll">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>Closed</th><th>Symbol</th><th>Side</th><th className="r">Lots</th>
-                      <th className="r">Entry</th><th className="r">Exit</th><th>Exit by</th>
-                      <th className="r">R</th><th className="r">Net</th><th>Chart</th><th>Journal</th><th></th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {recent.map((t) => {
-                      const j = t.dbId && journal ? journal.get(t.dbId) : undefined;
-                      const hasEntry = !!j && (j.notes || j.setup || j.tags.length || j.mistakes.length || j.emotion || j.screenshots.length);
-                      return (
-                        <tr key={t.externalId}>
-                          <td>{shortStamp(t.closeTime)}</td>
-                          <td>{t.symbol}</td>
-                          <td>{t.side === "buy" ? "Long" : "Short"}</td>
-                          <td className="r">{t.volume}</td>
-                          <td className="r">{t.openPrice}</td>
-                          <td className="r">{t.closePrice}{t.exits.length > 1 ? " ·avg" : ""}</td>
-                          <td>{t.exitReason === "sl" ? "Stop" : t.exitReason === "tp" ? "Target" : t.exitReason === "stop_out" ? "Stop-out" : "Manual"}</td>
-                          <td className={"r " + cls(t.rMultiple)}>{t.rMultiple === null ? "–" : t.rMultiple.toFixed(2)}</td>
-                          <td className={"r " + cls(t.net)}>{money(t.net, true)}</td>
-                          <td className="muted">{t.dbId && chartIds?.has(t.dbId) ? "✓" : "–"}</td>
-                          <td>{t.dbId && <Link href={`/trades/${t.dbId}`}>{hasEntry ? "Edit ✓" : "Add"}</Link>}</td>
-                          <td>{t.dbId && <button type="button" className="link danger" onClick={() => deleteTrade(t)} aria-label="Delete trade">Delete</button>}</td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            </section>
+            <TradesTable trades={trades} journal={journal} chartIds={chartIds} onDelete={deleteTrade} loadChart={loadChart} />
           )}
         </>
       )}

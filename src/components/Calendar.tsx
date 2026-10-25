@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { dailyPnL } from "@/lib/engine/analytics";
+import { monthSummary } from "@/lib/engine/insights";
 import type { Trade } from "@/lib/types";
 import { money, shortStamp } from "@/lib/format";
 
@@ -52,6 +53,9 @@ export function Calendar({ trades }: { trades: Trade[] }) {
   const worstDay = monthDays.length ? monthDays.reduce((a, b) => (b.net < a.net ? b : a)).date : null;
   const tradesOn = (d: string) => trades.filter((t) => t.closeTime.slice(0, 10) === d).sort((a, b) => (a.closeTime < b.closeTime ? -1 : 1));
 
+  const ms = monthSummary(trades, ym);
+  const lastDay = days.at(-1)?.date ?? "";
+  const maxWd = Math.max(1, ...ms.byWeekday.map((b) => Math.abs(b.net)));
   const dayTrades = picked ? trades.filter((t) => t.closeTime.slice(0, 10) === picked).sort((a, b) => (a.closeTime < b.closeTime ? -1 : 1)) : [];
   const dayInfo = picked ? byDate.get(picked) : undefined;
 
@@ -77,12 +81,14 @@ export function Calendar({ trades }: { trades: Trade[] }) {
               const order = wi * 7 + di;
               if (!d) return <div key={`${wi}-${di}`} className="cal-cell blank" />;
               const info = byDate.get(d);
+              const weekend = di >= 5;
+              const future = d > lastDay;
               const alpha = info ? 0.14 + 0.5 * (Math.abs(info.net) / maxAbs) : 0;
               const bg = info ? (info.net >= 0 ? `rgba(45,212,168,${alpha})` : `rgba(255,107,107,${alpha})`) : undefined;
               return (
                 <button
                   key={`${wi}-${di}`}
-                  className={"cal-cell pop" + (picked === d ? " picked" : "") + (info ? "" : " idle") + (info && d === bestDay && info.net > 0 ? " best" : "") + (info && d === worstDay && info.net < 0 ? " worst" : "")}
+                  className={"cal-cell pop" + (di >= 5 ? " wkend" : "") + (d > lastDay ? " future" : "") + (picked === d ? " picked" : "") + (info ? "" : " idle") + (info && d === bestDay && info.net > 0 ? " best" : "") + (info && d === worstDay && info.net < 0 ? " worst" : "")}
                   style={{ background: bg, animationDelay: `${order * 18}ms`, boxShadow: info ? `0 0 ${Math.round(18 * (Math.abs(info.net) / maxAbs))}px -4px ${info.net >= 0 ? "rgba(45,212,168,.55)" : "rgba(255,107,107,.55)"}` : undefined }}
                   disabled={!info}
                   onClick={() => setPicked(picked === d ? null : d)}
@@ -121,6 +127,26 @@ export function Calendar({ trades }: { trades: Trade[] }) {
         })}
       </div>
       <p className="muted small">P&amp;L is counted on the day each trade closed, in broker time.</p>
+
+      <div className="mpanel">
+        <div className="mstats">
+          <div className="kpi"><span>Best day</span><b className="pos">{ms.best ? money(ms.best.net, true) : "–"}</b><small>{ms.best?.date ?? ""}</small></div>
+          <div className="kpi"><span>Worst day</span><b className="neg">{ms.worst ? money(ms.worst.net, true) : "–"}</b><small>{ms.worst?.date ?? ""}</small></div>
+          <div className="kpi"><span>Average trading day</span><b className={cls(ms.avgPerDay ?? 0)}>{ms.avgPerDay === null ? "–" : money(ms.avgPerDay, true)}</b><small>{ms.tradingDays} trading days</small></div>
+          <div className="kpi"><span>Longest green run</span><b>{ms.greenStreak}</b><small>days in a row</small></div>
+        </div>
+        <div className="wdbars">
+          <h2>This month by weekday</h2>
+          {ms.byWeekday.length === 0 ? <p className="muted small">No trades this month.</p> : ms.byWeekday.map((b, i) => (
+            <div key={b.day} className="wd">
+              <span>{b.day}</span>
+              <span className="wd-track"><i className={b.net >= 0 ? "up" : "down"} style={{ width: `${(Math.abs(b.net) / maxWd) * 100}%`, animationDelay: `${i * 70}ms` }} /></span>
+              <b className={cls(b.net)}>{money(b.net, true)}</b>
+              <small className="muted">{b.n}</small>
+            </div>
+          ))}
+        </div>
+      </div>
 
       {picked && dayInfo && (
         <div className="day">

@@ -18,6 +18,18 @@ function Bars({ title, note, rows, label }: { title: string; note?: string; rows
     <section className="card">
       <h2>{title}</h2>
       {note && <p className="muted small bars-note">{note}</p>}
+      {rows.length >= 2 && (() => {
+        const L = (k: string) => (label ? label(k) : k);
+        const best = rows.reduce((a, b) => (b.net > a.net ? b : a)), worst = rows.reduce((a, b) => (b.net < a.net ? b : a));
+        const thin = [best, worst].some((r) => r.confidence !== "ok");
+        return (
+          <p className="says">
+            <span className="pos">Best: {L(best.key)} {money(best.net, true)} ({best.n})</span>
+            {worst.net < 0 && <span className="neg"> · Worst: {L(worst.key)} {money(worst.net, true)} ({worst.n})</span>}
+            {thin && <em className="conf"> small sample, treat as a question</em>}
+          </p>
+        );
+      })()}
       {rows.length === 0 ? (
         <p className="muted small">Nothing here yet.</p>
       ) : (
