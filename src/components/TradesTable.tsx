@@ -91,13 +91,13 @@ export function TradesTable({
               <th><button type="button" className="link" onClick={() => setAsc((v) => !v)}>Closed {asc ? "▲" : "▼"}</button></th>
               <th>Symbol</th><th>Side</th><th className="r">Lots</th>
               <th className="r">Entry</th><th className="r">Exit</th><th>Exit by</th>
-              <th className="r">R</th><th className="r">Net</th><th>Chart</th><th>Journal</th><th></th>
+              <th className="r">R</th><th className="r">Net</th><th>Chart</th><th>Live</th><th>Journal</th><th></th>
             </tr>
           </thead>
           <tbody>
             {sorted.slice(0, shown).map((t) => {
               const j = t.dbId && journal ? journal.get(t.dbId) : undefined;
-              const hasEntry = !!j && (j.notes || j.setup || j.tags.length || j.mistakes.length || j.emotion || j.screenshots.length);
+              const hasEntry = !!j && (j.notes || j.setup || j.setupIds.length || j.tags.length || j.mistakes.length || j.emotion || j.screenshots.length);
               return (
                 <tr key={t.externalId} className="hovrow" onMouseEnter={(e) => enter(t, e)} onMouseMove={(e) => setPv((p) => (p ? { ...p, x: e.clientX, y: e.clientY } : p))} onMouseLeave={leave}>
                   <td>{shortStamp(t.closeTime)}</td>
@@ -110,6 +110,7 @@ export function TradesTable({
                   <td className={"r " + cls(t.rMultiple)}>{t.rMultiple === null ? "–" : t.rMultiple.toFixed(2)}</td>
                   <td className={"r " + cls(t.net)}>{money(t.net, true)}</td>
                   <td className="muted">{t.dbId && chartIds?.has(t.dbId) ? "✓" : "–"}</td>
+                  <td>{t.dbId && <Link href={`/chart?trade=${t.dbId}`} className="small">Live chart →</Link>}</td>
                   <td>{t.dbId && <Link href={`/trades/${t.dbId}`}>{hasEntry ? "Edit ✓" : "Add"}</Link>}</td>
                   <td>{t.dbId && <button type="button" className="link danger" onClick={() => onDelete(t)} aria-label="Delete trade">Delete</button>}</td>
                 </tr>

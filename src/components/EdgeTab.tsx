@@ -66,7 +66,7 @@ function Bars({ title, note, rows, label }: { title: string; note?: string; rows
   );
 }
 
-export function EdgeTab({ trades, journal }: { trades: Trade[]; journal: Map<string, Journal> | null }) {
+export function EdgeTab({ trades, journal, setupNames }: { trades: Trade[]; journal: Map<string, Journal> | null; setupNames?: Map<string, string> }) {
   const plan = useMemo(() => byPlan(trades), [trades]);
   const timing = useMemo(() => byPlanTiming(trades), [trades]);
   const exits = useMemo(() => byExitReason(trades), [trades]);
@@ -75,7 +75,7 @@ export function EdgeTab({ trades, journal }: { trades: Trade[]; journal: Map<str
 
   const jOf = (t: Trade) => (t.dbId && journal ? journal.get(t.dbId) : undefined);
   const mistakes = useMemo(() => bucketBy(trades, (t) => jOf(t)?.mistakes ?? []).sort((a, b) => a.net - b.net), [trades, journal]); // eslint-disable-line react-hooks/exhaustive-deps
-  const setups = useMemo(() => bucketBy(trades, (t) => { const s = jOf(t)?.setup; return s ? [s] : []; }).sort((a, b) => b.net - a.net), [trades, journal]); // eslint-disable-line react-hooks/exhaustive-deps
+  const setups = useMemo(() => bucketBy(trades, (t) => { const j = jOf(t); if (!j) return []; const named = j.setupIds.map((i) => setupNames?.get(i)).filter(Boolean) as string[]; return named.length ? named : j.setup ? [j.setup] : []; }).sort((a, b) => b.net - a.net), [trades, journal, setupNames]); // eslint-disable-line react-hooks/exhaustive-deps
   const tags = useMemo(() => bucketBy(trades, (t) => jOf(t)?.tags ?? []).sort((a, b) => b.n - a.n), [trades, journal]); // eslint-disable-line react-hooks/exhaustive-deps
   const emotions = useMemo(
     () => bucketBy(trades, (t) => { const e = jOf(t)?.emotion; return e ? [String(e)] : []; }).sort((a, b) => Number(a.key) - Number(b.key)),
@@ -140,7 +140,7 @@ export function EdgeTab({ trades, journal }: { trades: Trade[]; journal: Map<str
         <>
           <p className="muted small">{journaled} of {trades.length} trades have journal entries. Only those are counted below.</p>
           <Bars title="By mistake" note="Worst first. This is what your mistakes cost." rows={mistakes} />
-          <Bars title="By setup" rows={setups} />
+          <Bars title="By setup" note="A trade with several setups is counted under each of them, so these rows add up to more than your total." rows={setups} />
           <Bars title="By tag" rows={tags} />
           <Bars title="By emotional state" note="1 = calm, 5 = tilted." rows={emotions} label={(k) => `${k} · ${EMOTIONS[Number(k) - 1] ?? ""}`} />
         </>

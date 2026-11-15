@@ -4,7 +4,9 @@ export const BUCKET = "trade-screenshots";
 
 export interface Journal {
   tradeId: string;
+  /** Legacy single free-text setup (before the setups list). */
   setup: string | null;
+  setupIds: string[];
   tags: string[];
   mistakes: string[];
   emotion: number | null;
@@ -31,6 +33,7 @@ export function rowToJournal(r: any): Journal {
   return {
     tradeId: r.trade_id,
     setup: r.setup ?? null,
+    setupIds: r.setup_ids ?? [],
     tags: r.tags ?? [],
     mistakes: r.mistakes ?? [],
     emotion: r.emotion ?? null,

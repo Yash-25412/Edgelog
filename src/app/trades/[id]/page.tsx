@@ -11,6 +11,9 @@ import { TradeChart } from "@/components/TradeChart";
 import type { ChartWindow } from "@/lib/engine/chartwindow";
 import { BUCKET, EMOTIONS, MISTAKES, rowToJournal } from "@/lib/journal";
 import type { Trade } from "@/lib/types";
+import { SetupPicker } from "@/components/SetupPicker";
+import { SetupsManager } from "@/components/SetupsManager";
+import { rowToSetup, type Setup } from "@/lib/setups";
 import { duration, money, num2, shortStamp } from "@/lib/format";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -20,7 +23,7 @@ const EXIT_NAME: Record<string, string> = { sl: "Stop loss", tp: "Take profit", 
 const MAX_IMAGE_BYTES = 6 * 1024 * 1024;
 
 interface Form {
-  setup: string;
+  setupIds: string[];
   tagsText: string;
   mistakes: string[];
   emotion: number | null;
@@ -37,9 +40,18 @@ export default function TradePage() {
 
   const [trade, setTrade] = useState<Trade | null>(null);
   const [userId, setUserId] = useState("");
-  const [form, setForm] = useState<Form>({ setup: "", tagsText: "", mistakes: [], emotion: null, notes: "", screenshots: [] });
+  const [form, setForm] = useState<Form>({ setupIds: [], tagsText: "", mistakes: [], emotion: null, notes: "", screenshots: [] });
   const [journalMissing, setJournalMissing] = useState(false);
   const [suggestions, setSuggestions] = useState<{ setups: string[]; tags: string[] }>({ setups: [], tags: [] });
+  const [setupList, setSetupList] = useState<Setup[]>([]);
+  const [setupsReady, setSetupsReady] = useState(true);
+  const [manageOpen, setManageOpen] = useState(false);
+  const loadSetups = useCallback(async () => {
+    const { data, error } = await getSupabase().from("setups").select("*").order("name", { ascending: true });
+    if (error) setSetupsReady(false);
+    else { setSetupsReady(true); setSetupList((data ?? []).map(rowToSetup)); }
+  }, []);
+  useEffect(() => { loadSetups(); }, [loadSetups]);
   const [urls, setUrls] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -81,7 +93,7 @@ export default function TradePage() {
         if (j) {
           const jr = rowToJournal(j);
           setForm({
-            setup: jr.setup ?? "",
+            setupIds: jr.setupIds,
             tagsText: jr.tags.join(", "),
             mistakes: jr.mistakes,
             emotion: jr.emotion,
@@ -127,7 +139,7 @@ export default function TradePage() {
           {
             trade_id: id,
             user_id: userId,
-            setup: f.setup.trim() || null,
+            ...(setupsReady ? { setup_ids: f.setupIds } : { setup: null }),
             tags: splitTags(f.tagsText),
             mistakes: f.mistakes,
             emotion: f.emotion,
@@ -319,6 +331,7 @@ export default function TradePage() {
             screenshot in the journal below.
           </p>
         )}
+        <p className="small"><Link href={`/chart?trade=${id}`}>Open this trade on the live chart →</Link> <span className="muted">(whole history, any timeframe)</span></p>
       </section>
 
       {journalMissing ? (
@@ -335,12 +348,19 @@ export default function TradePage() {
         >
           <h2>Journal</h2>
 
+          <div className="field-block">
+            <div className="fb-head">
+              <span>Setups <span className="muted small">(pick all that apply)</span></span>
+              <button type="button" className="link" onClick={() => setManageOpen((v) => !v)}>{manageOpen ? "Close list" : "Manage setups"}</button>
+            </div>
+            {setupsReady ? (
+              <SetupPicker setups={setupList} value={form.setupIds} onChange={(ids) => update({ setupIds: ids })} />
+            ) : (
+              <div className="notice">The setups list is not switched on yet. Run <b>0004_candles_setups.sql</b> in Supabase, then reload.</div>
+            )}
+            {manageOpen && setupsReady && <SetupsManager setups={setupList} userId={userId} onChange={loadSetups} />}
+          </div>
           <div className="row">
-            <label>
-              Setup
-              <input list="setups" value={form.setup} onChange={(e) => update({ setup: e.target.value })} placeholder="e.g. Pullback to support" />
-              <datalist id="setups">{suggestions.setups.map((s) => <option key={s} value={s} />)}</datalist>
-            </label>
             <label>
               Tags (comma separated)
               <input value={form.tagsText} onChange={(e) => update({ tagsText: e.target.value })} placeholder="london open, news day" />

@@ -11,6 +11,8 @@ Trading journal and analytics for day, swing and prop-firm traders. Multi-user.
 | 2 | Dashboard (KPIs, equity curve, calendar, multi-account) | Done: overview, P&L calendar, account switcher |
 | 3 | Journal + analytics | Done: edge cuts (hour, weekday, exit, stop discipline), per-trade journal with tags, mistakes, emotion, screenshots |
 | 3b | Trade charts from the user's own MT5 1-minute bars | Done: bars upload, 100-candle chart per trade, save to journal. Level marking deliberately not built yet |
+| 3c | Live chart: all 1-minute candles, timeframes 1m to 1D, long/short boxes for every trade, jump from the trades list | Done (needs 0004 SQL) |
+| 3d | Editable setups list with rule notes, several setups per trade | Done (needs 0004 SQL) |
 | 4 | Broker auto-sync | Not started |
 | 5 | AI coach | Not started |
 | 6 | X-factor features | Not started |

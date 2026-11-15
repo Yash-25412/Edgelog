@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { getSupabase } from "@/lib/supabase";
 import { CountUp, Reveal, Ring } from "@/components/Fx";
 import { EquityCurve } from "@/components/EquityCurve";
+import { saveCandleDays } from "@/lib/candlestore";
 import { TradesTable } from "@/components/TradesTable";
 import { insights } from "@/lib/engine/insights";
 import { rowToChart } from "@/lib/charts";
@@ -81,7 +82,8 @@ export default function Dashboard() {
   const candleRef = useRef<HTMLInputElement>(null);
   const [candleSymbol, setCandleSymbol] = useState("");
   const [candleBusy, setCandleBusy] = useState(false);
-  const [candleResult, setCandleResult] = useState<{ symbol: string; saved: number; notCovered: number; mismatch: number; skippedRows: number } | null>(null);
+  const [candleResult, setCandleResult] = useState<{ symbol: string; saved: number; notCovered: number; mismatch: number; skippedRows: number; days?: number; bars?: number } | null>(null);
+  const [candleProgress, setCandleProgress] = useState<string | null>(null);
   const [chartIds, setChartIds] = useState<Set<string> | null>(null);
   const [chartTick, setChartTick] = useState(0);
 
@@ -240,6 +242,10 @@ export default function Dashboard() {
     }
     return { n, dir };
   }, [trades]);
+  const [setupNames, setSetupNames] = useState<Map<string, string>>(new Map());
+  useEffect(() => {
+    getSupabase().from("setups").select("id, name").then(({ data }) => setSetupNames(new Map((data ?? []).map((r: any) => [r.id, r.name]))));
+  }, [ready]);
   const chartCache = useRef(new Map<string, ChartWindow | null>());
   async function loadChart(dbId: string): Promise<ChartWindow | null> {
     if (chartCache.current.has(dbId)) return chartCache.current.get(dbId) ?? null;
@@ -377,7 +383,9 @@ export default function Dashboard() {
       const userId = s.session.user.id;
 
       const mine = trades.filter((t) => t.dbId && t.symbol.toLowerCase() === symbol.toLowerCase());
-      if (!mine.length) throw new Error(`No imported trades for ${symbol} in this view. Import your trade report first, and check the symbol spelling.`);
+      setCandleProgress("Saving candles for the live chart…");
+      const saved = await saveCandleDays(sb, userId, symbol.toUpperCase(), bars, (d, n) => setCandleProgress(`Saving candles for the live chart… ${d} of ${n} days`));
+      setCandleProgress(null);
 
       let notCovered = 0, mismatch = 0;
       const rows: ReturnType<typeof chartToRow>[] = [];
@@ -394,7 +402,7 @@ export default function Dashboard() {
           throw new Error(/trade_charts/.test(error.message) ? "The charts table does not exist yet. Run 0003_charts.sql in Supabase first." : error.message);
         }
       }
-      setCandleResult({ symbol, saved: rows.length, notCovered, mismatch, skippedRows: skipped });
+      setCandleResult({ symbol, saved: rows.length, notCovered, mismatch, skippedRows: skipped, days: saved.days, bars: saved.bars });
       setChartTick((n) => n + 1);
       if (candleRef.current) candleRef.current.value = "";
     } catch (err) {
@@ -417,6 +425,8 @@ export default function Dashboard() {
               <option key={a.id} value={a.id}>{a.name}</option>
             ))}
           </select>
+          <Link href="/chart" className="linkbtn">📈 Live chart</Link>
+          <Link href="/setups" className="linkbtn">Setups</Link>
           <button className="primary" onClick={() => setShowManual((v) => !v)}>{showManual ? "Close" : "+ Log a trade"}</button>
           <button onClick={() => setShowImport((v) => !v)}>{showImport ? "Close import" : "Import trades"}</button>
           <span className="muted small hide-sm">{email}</span>
@@ -509,8 +519,8 @@ export default function Dashboard() {
           <h2>Add price candles (optional)</h2>
           <p className="muted small">
             Gives each trade a chart. In MetaTrader 5 press <b>Ctrl+U</b>, open the <b>Bars</b> tab, pick the symbol and <b>1 Minute</b>, set the
-            dates, click <b>Request</b>, then <b>Export Bars</b>. Import your trade report first. The file stays in your browser; only the
-            roughly 100 candles around each trade are saved.
+            dates, click <b>Request</b>, then <b>Export Bars</b>. Import your trade report first. The file is read in your browser;
+            whole file is saved to your account so the Live chart can show your full history, and each trade also gets its own snapshot chart.
           </p>
           <div className="row">
             <label>
@@ -531,10 +541,10 @@ export default function Dashboard() {
               <input value={candleSymbol} onChange={(e) => setCandleSymbol(e.target.value)} placeholder="e.g. XAUUSD" />
             </label>
           </div>
-          <button className="primary" disabled={candleBusy}>{candleBusy ? "Building charts…" : "Build charts"}</button>
+          <button className="primary" disabled={candleBusy}>{candleBusy ? candleProgress ?? "Building charts…" : "Save candles & build charts"}</button>
           {candleResult && (
             <div className="notice">
-              {candleResult.symbol}: {candleResult.saved} charts saved.
+              {candleResult.symbol}: {candleResult.bars?.toLocaleString()} candles ({candleResult.days} days) saved for the live chart, and {candleResult.saved} trade charts built.
               {candleResult.notCovered > 0 && ` ${candleResult.notCovered} trades fall outside the dates in your file.`}
               {candleResult.mismatch > 0 && ` ${candleResult.mismatch} trades were skipped because their prices do not fit these candles (a different price feed or clock).`}
               {candleResult.skippedRows > 0 && ` ${candleResult.skippedRows} unreadable rows in the file were ignored.`}
@@ -657,7 +667,7 @@ export default function Dashboard() {
 
           {tab === "calendar" && <Calendar trades={trades} />}
 
-          {tab === "edge" && <EdgeTab trades={trades} journal={journal} />}
+          {tab === "edge" && <EdgeTab trades={trades} journal={journal} setupNames={setupNames} />}
 
           {tab === "trades" && (
             <TradesTable trades={trades} journal={journal} chartIds={chartIds} onDelete={deleteTrade} loadChart={loadChart} />
