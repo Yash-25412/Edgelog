@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { Suspense } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { getSupabase } from "@/lib/supabase";
 import { rowToTrade } from "@/lib/db";
 import { withFinalStopR } from "@/lib/engine/rfallback";
@@ -19,8 +20,20 @@ const idOf = (t: Trade) => t.dbId ?? t.externalId;
 const recall = (k: string) => { try { return sessionStorage.getItem(k); } catch { return null; } };
 const remember = (k: string, v: string) => { try { sessionStorage.setItem(k, v); } catch { /* fine */ } };
 
+// The trade to open comes from the URL (?trade=<id>). It is read with useSearchParams, not window.location:
+// on a client-side navigation Next renders this page before the address bar updates, so window.location
+// still shows the previous page and the link would silently fall back to the latest trade.
 export default function ChartPage() {
+  return (
+    <Suspense fallback={<div className="shell muted">Loading…</div>}>
+      <ChartInner />
+    </Suspense>
+  );
+}
+
+function ChartInner() {
   const router = useRouter();
+  const want = useSearchParams().get("trade");
   const [accounts, setAccounts] = useState<{ id: string; name: string }[]>([]);
   const [account, setAccount] = useState<string>("");
   const [allTrades, setAllTrades] = useState<Trade[]>([]);
@@ -34,7 +47,6 @@ export default function ChartPage() {
   const [fullscreen, setFullscreen] = useState(false);
   const [setupNames, setSetupNames] = useState<Map<string, string>>(new Map());
   const [setupsOf, setSetupsOf] = useState<Map<string, string[]>>(new Map());
-  const [want] = useState<string | null>(() => (typeof window === "undefined" ? null : new URLSearchParams(window.location.search).get("trade")));
 
   // accounts + trades
   useEffect(() => {
@@ -142,6 +154,12 @@ export default function ChartPage() {
     setJump({ id: idOf(t), n: 1 });
     setDidJump(true);
   }, [m1, trades, want, didJump]);
+
+  useEffect(() => {
+    if (!want || !didJump) return;
+    const t = trades.find((x) => idOf(x) === want);
+    if (t && selected !== want) { setSelected(want); setJump((j) => ({ id: want, n: (j?.n ?? 0) + 1 })); }
+  }, [want]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const go = (id: string) => { setSelected(id); setJump((j) => ({ id, n: (j?.n ?? 0) + 1 })); };
   const idx = trades.findIndex((t) => idOf(t) === selected);
